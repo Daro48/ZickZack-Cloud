@@ -1,0 +1,56 @@
+# Secrets / lokale Konfiguration
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+*.local
+.npm/
+.vite/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs & temporär
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+tmp/
+temp/
+.cache/
+
+# Medien (lokal gespeicherte Uploads, nie committen)
+media/
+data/media/*
+!data/media/.gitkeep
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.heic
+*.heif
+
+# Docker / lokalen Volumes-Backup
+*.sql.gz
+*.dump

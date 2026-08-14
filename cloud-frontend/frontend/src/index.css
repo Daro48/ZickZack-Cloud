@@ -1,0 +1,65 @@
+:root {
+  --forest-graphite: #1f2a24;
+  --acid-mint: #b4ff6a;
+
+  --page-bg: var(--forest-graphite);
+  --panel: #283530;
+  --text-strong: #f2fff0;
+  --text-muted: rgba(180, 255, 106, 0.62);
+  --border: rgba(180, 255, 106, 0.22);
+  --mint-soft: rgba(180, 255, 106, 0.16);
+  --error: #ff8f8f;
+  --error-soft: rgba(255, 143, 143, 0.14);
+  --page-pad: clamp(16px, 5vw, 72px);
+  --topbar-h: 72px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  color: var(--text-strong);
+  font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+body {
+  background: var(--page-bg);
+  margin: 0;
+  min-width: 320px;
+  padding:
+    env(safe-area-inset-top, 0px)
+    env(safe-area-inset-right, 0px)
+    0
+    env(safe-area-inset-left, 0px);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  touch-action: manipulation;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button:hover {
+    transform: translateY(-1px);
+  }
+}
