@@ -46,7 +46,7 @@ def list_media_for_week():
 
     bounds = week_range(year, month, week)
     if not bounds:
-        return jsonify({"status": "error", "message": "Ungueltige Woche."}), 400
+        return jsonify({"status": "error", "message": "Ungültige Woche."}), 400
 
     start, end = bounds
     connection = get_database_connection()
@@ -118,7 +118,7 @@ def list_media_for_week():
 @media_bp.get("/bp/media/file/<media_type>/<int:media_id>")
 def get_media_file(media_type, media_id):
     if media_type not in ("photo", "video"):
-        return jsonify({"status": "error", "message": "Ungueltiger Typ."}), 400
+        return jsonify({"status": "error", "message": "Ungültiger Typ."}), 400
 
     table = "photos" if media_type == "photo" else "videos"
     connection = get_database_connection()
@@ -146,7 +146,7 @@ def get_media_file(media_type, media_id):
         try:
             absolute_path.relative_to(media_root)
         except ValueError:
-            return jsonify({"status": "error", "message": "Ungueltiger Pfad."}), 400
+            return jsonify({"status": "error", "message": "Ungültiger Pfad."}), 400
         if not absolute_path.is_file():
             return jsonify({"status": "error", "message": "Datei fehlt."}), 404
 

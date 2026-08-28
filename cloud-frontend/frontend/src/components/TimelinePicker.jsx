@@ -1,7 +1,7 @@
 const MONTH_NAMES = [
   'Januar',
   'Februar',
-  'Maerz',
+  'März',
   'April',
   'Mai',
   'Juni',
@@ -105,7 +105,7 @@ export function TimelinePicker({
       </div>
 
       {openPanel === 'year' && (
-        <div className="picker-panel" role="listbox" aria-label="Jahr waehlen">
+        <div className="picker-panel" role="listbox" aria-label="Jahr wählen">
           <div className="picker-grid picker-grid-years">
             {years.map((year) => (
               <button
@@ -124,7 +124,7 @@ export function TimelinePicker({
       )}
 
       {openPanel === 'month' && (
-        <div className="picker-panel" role="listbox" aria-label="Monat waehlen">
+        <div className="picker-panel" role="listbox" aria-label="Monat wählen">
           <div className="picker-grid picker-grid-months">
             {months.map((month) => (
               <button
@@ -144,7 +144,7 @@ export function TimelinePicker({
       )}
 
       {openPanel === 'week' && (
-        <div className="picker-panel" role="listbox" aria-label="Woche waehlen">
+        <div className="picker-panel" role="listbox" aria-label="Woche wählen">
           <div className="picker-week-list">
             {weeks.map((entry) => (
               <button

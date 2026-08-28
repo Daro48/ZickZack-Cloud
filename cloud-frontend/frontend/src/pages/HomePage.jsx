@@ -95,7 +95,7 @@ export function HomePage({ username, onLogout, onGoBunch }) {
 
   function openFilePicker() {
     if (!selectedFolder) {
-      setUploadError('Bitte zuerst einen Ordner waehlen oder erstellen.')
+      setUploadError('Bitte zuerst einen Ordner wählen oder erstellen.')
       return
     }
     fileInputRef.current?.click()
@@ -110,7 +110,7 @@ export function HomePage({ username, onLogout, onGoBunch }) {
     }
 
     if (!selectedFolder) {
-      setUploadError('Bitte zuerst einen Ordner waehlen oder erstellen.')
+      setUploadError('Bitte zuerst einen Ordner wählen oder erstellen.')
       return
     }
 
@@ -275,10 +275,10 @@ export function HomePage({ username, onLogout, onGoBunch }) {
           )}
 
           {isLoadingMedia ? (
-            <p className="empty-home">Laedt...</p>
+            <p className="empty-home">Lädt…</p>
           ) : !hasLoaded ? (
             <div className="empty-panel">
-              <p>Jahr, Monat und Woche waehlen.</p>
+              <p>Jahr, Monat und Woche wählen.</p>
               <span>Fotos und Videos erscheinen erst nach der Wochenwahl.</span>
             </div>
           ) : items.length === 0 ? (

@@ -95,7 +95,7 @@ function App() {
 
     try {
       await resetPassword({ username, recoveryCode: code, password })
-      setAuthNotice('Passwort gespeichert. Du kannst dich jetzt einloggen.')
+      setAuthNotice('Passwort gespeichert. Du kannst dich jetzt anmelden.')
       setPage('login')
     } catch (error) {
       setAuthError(error.message)
@@ -138,8 +138,8 @@ function App() {
       <AuthLayout>
         <section className="auth-card" aria-live="polite">
           <p className="eyebrow">Cloud</p>
-          <h1>Laedt...</h1>
-          <p className="auth-copy">Deine Session wird geprueft.</p>
+          <h1>Lädt…</h1>
+          <p className="auth-copy">Deine Sitzung wird geprüft.</p>
         </section>
       </AuthLayout>
     )

@@ -108,7 +108,7 @@ export async function uploadMedia(files, options = {}) {
   const { folder, onFileStart, onFileProgress, onFileDone, onFileError } = options
 
   if (!folder || !String(folder).trim()) {
-    throw new Error('Bitte zuerst einen Ordner waehlen oder erstellen.')
+    throw new Error('Bitte zuerst einen Ordner wählen oder erstellen.')
   }
 
   const fileList = normalizeQueue(files)

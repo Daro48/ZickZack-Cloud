@@ -106,12 +106,12 @@ export function BunchUploadPage({ username, onLogout, onGoHome }) {
 
     if (incoming.length === 0) {
       if (selected.length > 0) {
-        setSummary('Keine gueltigen Fotos/Videos erkannt. Bitte erneut waehlen.')
+        setSummary('Keine gültigen Fotos/Videos erkannt. Bitte erneut wählen.')
       }
       return
     }
 
-    setSummary(`${incoming.length} Datei(en) hinzugefuegt — jetzt Upload starten.`)
+    setSummary(`${incoming.length} Datei(en) hinzugefügt — jetzt Upload starten.`)
     setQueue((current) => [...current, ...incoming])
   }
 
@@ -201,7 +201,7 @@ export function BunchUploadPage({ username, onLogout, onGoHome }) {
     }
 
     if (!selectedFolder) {
-      setSummary('Bitte zuerst einen Ordner waehlen oder erstellen.')
+      setSummary('Bitte zuerst einen Ordner wählen oder erstellen.')
       return
     }
 
@@ -358,7 +358,7 @@ export function BunchUploadPage({ username, onLogout, onGoHome }) {
                 )}
               </div>
               {isUploading && (
-                <span className="bunch-progress-live">Upload laeuft...</span>
+                <span className="bunch-progress-live">Upload läuft…</span>
               )}
             </div>
 
@@ -377,7 +377,7 @@ export function BunchUploadPage({ username, onLogout, onGoHome }) {
           </section>
         )}
 
-        <section className="bunch-section" aria-label="Dateien hinzufuegen">
+        <section className="bunch-section" aria-label="Dateien hinzufügen">
           <input
             ref={fileInputRef}
             accept="image/*,video/*,.heic,.heif,.mov,.mp4,.m4v,.webm,.3gp"

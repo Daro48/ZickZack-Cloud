@@ -12,7 +12,7 @@ export function ResetPasswordPage({ error, notice, isSubmitting, onResetPassword
     setLocalError('')
 
     if (password !== passwordRepeat) {
-      setLocalError('Passwoerter stimmen nicht ueberein.')
+      setLocalError('Die Passwörter stimmen nicht überein.')
       return
     }
 
@@ -26,7 +26,7 @@ export function ResetPasswordPage({ error, notice, isSubmitting, onResetPassword
   return (
     <form className="auth-card" onSubmit={handleSubmit}>
       <p className="eyebrow">Passwort</p>
-      <h1>Zuruecksetzen</h1>
+      <h1>Zurücksetzen</h1>
       <p className="auth-copy">
         Gib Username und Wiederherstellungscode ein. Den Code findest du in der Datenbank unter users.recovery_code.
       </p>
@@ -94,9 +94,9 @@ export function ResetPasswordPage({ error, notice, isSubmitting, onResetPassword
       </button>
 
       <p className="switch-copy">
-        Zurueck zum
+        Zurück zur
         <button type="button" onClick={onShowLogin}>
-          Login
+          Anmeldung
         </button>
       </p>
     </form>

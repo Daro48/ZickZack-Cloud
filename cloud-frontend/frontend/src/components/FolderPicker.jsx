@@ -103,8 +103,8 @@ export function FolderPicker({
 
   const selectDisabled = disabled || isLoading || folders.length === 0
   const displayValue = isLoading
-    ? 'Laedt...'
-    : folder || (folders.length === 0 ? 'Noch kein Ordner' : 'Ordner waehlen')
+    ? 'Lädt…'
+    : folder || (folders.length === 0 ? 'Noch kein Ordner' : 'Ordner wählen')
 
   return (
     <section className="folder-picker" aria-label="Zielordner" ref={rootRef}>
@@ -137,7 +137,7 @@ export function FolderPicker({
             <div
               className="folder-select-panel"
               role="listbox"
-              aria-label="Ordner waehlen"
+              aria-label="Ordner wählen"
             >
               {folders.map((entry) => (
                 <button

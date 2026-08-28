@@ -61,7 +61,7 @@ export function LoginPage({ error, notice, isSubmitting, onLogin, onShowRegister
       <p className="switch-copy">
         Passwort vergessen?
         <button type="button" onClick={onShowResetPassword}>
-          Zuruecksetzen
+          Zurücksetzen
         </button>
       </p>
     </form>

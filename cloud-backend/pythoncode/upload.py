@@ -166,7 +166,7 @@ def create_folder():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Ungueltiger Ordnername. Erlaubt: Buchstaben, Zahlen, Leerzeichen, - und _.",
+                    "message": "Ungültiger Ordnername. Erlaubt: Buchstaben, Zahlen, Leerzeichen, - und _.",
                 }
             ),
             400,
@@ -216,7 +216,7 @@ def upload_media():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Keine Dateien ausgewaehlt.",
+                    "message": "Keine Dateien ausgewählt.",
                 }
             ),
             400,
@@ -228,7 +228,7 @@ def upload_media():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Bitte zuerst einen Ordner waehlen oder erstellen.",
+                    "message": "Bitte zuerst einen Ordner wählen oder erstellen.",
                 }
             ),
             400,

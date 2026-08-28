@@ -24,7 +24,7 @@ export function RegisterPage({ error, isSubmitting, onRegister, onShowLogin }) {
           autoComplete="username"
           name="username"
           onChange={(event) => setUsername(event.target.value)}
-          placeholder="username waehlen"
+          placeholder="Benutzername wählen"
           minLength={3}
           required
           type="text"

@@ -17,7 +17,7 @@ export function RecoveryCodePage({ recoveryCode, onContinue }) {
       <p className="eyebrow">Wichtig</p>
       <h1>Wiederherstellungscode</h1>
       <p className="auth-copy">
-        Schreib dir diesen Code auf. Damit kannst du spaeter dein Passwort zuruecksetzen.
+        Schreib dir diesen Code auf. Damit kannst du später dein Passwort zurücksetzen.
         Als Admin findest du ihn auch in der Tabelle users.
       </p>
 
