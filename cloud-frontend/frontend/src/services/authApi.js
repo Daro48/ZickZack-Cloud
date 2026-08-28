@@ -38,6 +38,14 @@ export function registerUser({ username, password }) {
   return requestAuth('/bp/auth/register', { username, password })
 }
 
+export function resetPassword({ username, recoveryCode, password }) {
+  return requestAuth('/bp/auth/reset-password', {
+    username,
+    recovery_code: recoveryCode,
+    password,
+  })
+}
+
 export function loginUser({ username, password }) {
   return requestAuth('/bp/auth/login', { username, password })
 }

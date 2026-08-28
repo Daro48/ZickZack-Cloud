@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export function LoginPage({ error, isSubmitting, onLogin, onShowRegister }) {
+export function LoginPage({ error, notice, isSubmitting, onLogin, onShowRegister, onShowResetPassword }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
 
@@ -45,6 +45,7 @@ export function LoginPage({ error, isSubmitting, onLogin, onShowRegister }) {
       </label>
 
       {error && <p className="form-error">{error}</p>}
+      {notice && !error && <p className="form-success">{notice}</p>}
 
       <button className="primary-button" disabled={isSubmitting} type="submit">
         {isSubmitting ? 'Einloggen...' : 'Einloggen'}
@@ -54,6 +55,13 @@ export function LoginPage({ error, isSubmitting, onLogin, onShowRegister }) {
         Noch kein Konto?
         <button type="button" onClick={onShowRegister}>
           Registrieren
+        </button>
+      </p>
+
+      <p className="switch-copy">
+        Passwort vergessen?
+        <button type="button" onClick={onShowResetPassword}>
+          Zuruecksetzen
         </button>
       </p>
     </form>

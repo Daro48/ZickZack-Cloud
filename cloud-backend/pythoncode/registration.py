@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash
 from database import get_database_connection
 from upload import ensure_user_media_root
+from recovery import ensure_recovery_code_column, generate_recovery_code
 import pymysql
 
 
@@ -48,17 +49,33 @@ def register():
         )
 
     password_hash = generate_password_hash(password)
+    recovery_code = generate_recovery_code()
 
     connection = get_database_connection()
     try:
+        ensure_recovery_code_column(connection)
+        connection.commit()
+
         with connection.cursor() as cursor:
-            sql = "INSERT INTO users (username, password_hash) VALUES (%s, %s)"
-            cursor.execute(sql, (username, password_hash))
+            sql = """
+                INSERT INTO users (username, password_hash, recovery_code)
+                VALUES (%s, %s, %s)
+            """
+            cursor.execute(sql, (username, password_hash, recovery_code))
 
         connection.commit()
         ensure_user_media_root(username)
 
-        return jsonify({"status": "ok", "message": "Registration successful!"}), 201
+        return (
+            jsonify(
+                {
+                    "status": "ok",
+                    "message": "Registration successful!",
+                    "recovery_code": recovery_code,
+                }
+            ),
+            201,
+        )
 
     except pymysql.err.IntegrityError:
         return (

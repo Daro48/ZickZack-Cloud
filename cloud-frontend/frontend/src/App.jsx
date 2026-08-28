@@ -4,15 +4,25 @@ import { AuthLayout } from './components/AuthLayout.jsx'
 import { BunchUploadPage } from './pages/BunchUploadPage.jsx'
 import { HomePage } from './pages/HomePage.jsx'
 import { LoginPage } from './pages/LoginPage.jsx'
+import { RecoveryCodePage } from './pages/RecoveryCodePage.jsx'
 import { RegisterPage } from './pages/RegisterPage.jsx'
-import { getCurrentUser, loginUser, logoutUser, registerUser } from './services/authApi.js'
+import { ResetPasswordPage } from './pages/ResetPasswordPage.jsx'
+import {
+  getCurrentUser,
+  loginUser,
+  logoutUser,
+  registerUser,
+  resetPassword,
+} from './services/authApi.js'
 
 function App() {
   const [page, setPage] = useState('login')
   const [user, setUser] = useState(null)
   const [authError, setAuthError] = useState('')
+  const [authNotice, setAuthNotice] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isCheckingSession, setIsCheckingSession] = useState(true)
+  const [recoveryCode, setRecoveryCode] = useState('')
 
   useEffect(() => {
     let isMounted = true
@@ -47,6 +57,7 @@ function App() {
   async function handleLogin({ username, password }) {
     setIsSubmitting(true)
     setAuthError('')
+    setAuthNotice('')
 
     try {
       const data = await loginUser({ username, password })
@@ -62,12 +73,30 @@ function App() {
   async function handleRegister({ username, password }) {
     setIsSubmitting(true)
     setAuthError('')
+    setAuthNotice('')
 
     try {
-      await registerUser({ username, password })
+      const registerData = await registerUser({ username, password })
       const data = await loginUser({ username, password })
       setUser(data.user || { username })
-      setPage('home')
+      setRecoveryCode(registerData.recovery_code || '')
+      setPage(registerData.recovery_code ? 'recovery-code' : 'home')
+    } catch (error) {
+      setAuthError(error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function handleResetPassword({ username, recoveryCode: code, password }) {
+    setIsSubmitting(true)
+    setAuthError('')
+    setAuthNotice('')
+
+    try {
+      await resetPassword({ username, recoveryCode: code, password })
+      setAuthNotice('Passwort gespeichert. Du kannst dich jetzt einloggen.')
+      setPage('login')
     } catch (error) {
       setAuthError(error.message)
     } finally {
@@ -81,18 +110,27 @@ function App() {
     } finally {
       setUser(null)
       setAuthError('')
+      setAuthNotice('')
       setPage('login')
     }
   }
 
   function showLogin() {
     setAuthError('')
+    setAuthNotice('')
     setPage('login')
   }
 
   function showRegister() {
     setAuthError('')
+    setAuthNotice('')
     setPage('register')
+  }
+
+  function showResetPassword() {
+    setAuthError('')
+    setAuthNotice('')
+    setPage('reset-password')
   }
 
   if (isCheckingSession) {
@@ -103,6 +141,20 @@ function App() {
           <h1>Laedt...</h1>
           <p className="auth-copy">Deine Session wird geprueft.</p>
         </section>
+      </AuthLayout>
+    )
+  }
+
+  if (page === 'recovery-code' && user && recoveryCode) {
+    return (
+      <AuthLayout>
+        <RecoveryCodePage
+          recoveryCode={recoveryCode}
+          onContinue={() => {
+            setRecoveryCode('')
+            setPage('home')
+          }}
+        />
       </AuthLayout>
     )
   }
@@ -127,25 +179,39 @@ function App() {
     )
   }
 
-  return (
-    <AuthLayout>
-      {page === 'register' ? (
-        <RegisterPage
-          error={authError}
-          isSubmitting={isSubmitting}
-          onRegister={handleRegister}
-          onShowLogin={showLogin}
-        />
-      ) : (
-        <LoginPage
-          error={authError}
-          isSubmitting={isSubmitting}
-          onLogin={handleLogin}
-          onShowRegister={showRegister}
-        />
-      )}
-    </AuthLayout>
+  let authPage = (
+    <LoginPage
+      error={authError}
+      notice={authNotice}
+      isSubmitting={isSubmitting}
+      onLogin={handleLogin}
+      onShowRegister={showRegister}
+      onShowResetPassword={showResetPassword}
+    />
   )
+
+  if (page === 'register') {
+    authPage = (
+      <RegisterPage
+        error={authError}
+        isSubmitting={isSubmitting}
+        onRegister={handleRegister}
+        onShowLogin={showLogin}
+      />
+    )
+  } else if (page === 'reset-password') {
+    authPage = (
+      <ResetPasswordPage
+        error={authError}
+        notice={authNotice}
+        isSubmitting={isSubmitting}
+        onResetPassword={handleResetPassword}
+        onShowLogin={showLogin}
+      />
+    )
+  }
+
+  return <AuthLayout>{authPage}</AuthLayout>
 }
 
 export default App

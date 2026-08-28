@@ -4,6 +4,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from database import get_database_connection
 from login import login_bp
 from registration import auth_bp
+from recovery import recovery_bp
 from media import media_bp
 from upload import upload_bp
 
@@ -15,6 +16,7 @@ app.config["MAX_CONTENT_LENGTH"] = int(
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(login_bp)
+app.register_blueprint(recovery_bp)
 app.register_blueprint(upload_bp)
 app.register_blueprint(media_bp)
 

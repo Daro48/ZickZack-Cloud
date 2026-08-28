@@ -434,7 +434,8 @@
   padding: 14px 22px;
 }
 
-.auth-card .primary-button {
+.auth-card .primary-button,
+.auth-card .secondary-button {
   width: 100%;
 }
 
@@ -448,14 +449,37 @@
   transform: none;
 }
 
-.form-error {
-  background: var(--error-soft);
+.form-error,
+.form-success {
   border-radius: 14px;
-  color: var(--error);
   font-size: 0.92rem;
   font-weight: 700;
   margin: 0;
   padding: 12px 14px;
+}
+
+.form-error {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.form-success {
+  background: var(--mint-soft);
+  color: var(--acid-mint);
+}
+
+.recovery-code {
+  background: var(--forest-graphite);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  color: var(--acid-mint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: clamp(1.4rem, 4vw, 1.8rem);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  margin: 0;
+  padding: 18px 16px;
+  text-align: center;
 }
 
 .switch-copy {
