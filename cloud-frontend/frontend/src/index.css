@@ -11,7 +11,7 @@
   --error: #ff8f8f;
   --error-soft: rgba(255, 143, 143, 0.14);
   --page-pad: clamp(16px, 5vw, 72px);
-  --topbar-h: 72px;
+  --topbar-h: 56px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
   color: var(--text-strong);
@@ -55,11 +55,5 @@ button {
   transition:
     background-color 180ms ease,
     color 180ms ease,
-    transform 180ms ease;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  button:hover {
-    transform: translateY(-1px);
-  }
+    border-color 180ms ease;
 }
