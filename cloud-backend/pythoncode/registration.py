@@ -4,13 +4,26 @@ from database import get_database_connection
 from upload import ensure_user_media_root
 from recovery import ensure_recovery_code_column, generate_recovery_code
 import pymysql
+import os
 
 
 auth_bp = Blueprint("auth", __name__)
+REGISTRATION_ENABLED = os.getenv("REGISTRATION_ENABLED", "true").lower() == "true"
 
 
 @auth_bp.post("/bp/auth/register")
 def register():
+    if not REGISTRATION_ENABLED:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Registration is currently disabled",
+                }
+            ),
+            403,
+        )
+
     data = request.get_json()
 
     if not data or not data.get("username") or not data.get("password"):

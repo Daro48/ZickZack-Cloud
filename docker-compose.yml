@@ -46,6 +46,7 @@ services:
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-2147483648}
       WAITRESS_THREADS: ${WAITRESS_THREADS:-8}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
     depends_on:
       db:
         condition: service_healthy
