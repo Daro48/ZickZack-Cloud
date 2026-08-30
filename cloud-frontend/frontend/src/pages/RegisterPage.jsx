@@ -16,15 +16,15 @@ export function RegisterPage({ error, isSubmitting, onRegister, onShowLogin }) {
     <form className="auth-card" onSubmit={handleSubmit}>
       <p className="eyebrow">Neues Konto</p>
       <h1>Registrierung</h1>
-      <p className="auth-copy">Erstelle deinen Account und starte mit deiner eigenen Seite.</p>
+      <p className="auth-copy">Erstelle dein Konto und starte mit deiner Cloud.</p>
 
       <label>
-        Username
+        Benutzername
         <input
           autoComplete="username"
           name="username"
           onChange={(event) => setUsername(event.target.value)}
-          placeholder="Benutzername wählen"
+          placeholder="Benutzername"
           minLength={3}
           required
           type="text"
@@ -38,7 +38,7 @@ export function RegisterPage({ error, isSubmitting, onRegister, onShowLogin }) {
           autoComplete="new-password"
           name="password"
           onChange={(event) => setPassword(event.target.value)}
-          placeholder="passwort erstellen"
+          placeholder="Passwort"
           minLength={6}
           required
           type="password"
@@ -49,13 +49,13 @@ export function RegisterPage({ error, isSubmitting, onRegister, onShowLogin }) {
       {error && <p className="form-error">{error}</p>}
 
       <button className="primary-button" disabled={isSubmitting} type="submit">
-        {isSubmitting ? 'Konto erstellen...' : 'Konto erstellen'}
+        {isSubmitting ? 'Konto wird erstellt…' : 'Konto erstellen'}
       </button>
 
       <p className="switch-copy">
         Schon registriert?
         <button type="button" onClick={onShowLogin}>
-          Zum Login
+          Zur Anmeldung
         </button>
       </p>
     </form>

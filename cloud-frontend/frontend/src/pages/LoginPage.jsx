@@ -15,16 +15,16 @@ export function LoginPage({ error, notice, isSubmitting, onLogin, onShowRegister
   return (
     <form className="auth-card" onSubmit={handleSubmit}>
       <p className="eyebrow">Willkommen</p>
-      <h1>Login</h1>
-      <p className="auth-copy">Melde dich an, um deine Cloud zu sehen.</p>
+      <h1>Anmelden</h1>
+      <p className="auth-copy">Melde dich an, um auf deine Cloud zuzugreifen.</p>
 
       <label>
-        Username
+        Benutzername
         <input
           autoComplete="username"
           name="username"
           onChange={(event) => setUsername(event.target.value)}
-          placeholder="dein username"
+          placeholder="Benutzername"
           required
           type="text"
           value={username}
@@ -37,7 +37,7 @@ export function LoginPage({ error, notice, isSubmitting, onLogin, onShowRegister
           autoComplete="current-password"
           name="password"
           onChange={(event) => setPassword(event.target.value)}
-          placeholder="dein passwort"
+          placeholder="Passwort"
           required
           type="password"
           value={password}
@@ -48,7 +48,7 @@ export function LoginPage({ error, notice, isSubmitting, onLogin, onShowRegister
       {notice && !error && <p className="form-success">{notice}</p>}
 
       <button className="primary-button" disabled={isSubmitting} type="submit">
-        {isSubmitting ? 'Einloggen...' : 'Einloggen'}
+        {isSubmitting ? 'Wird angemeldet…' : 'Anmelden'}
       </button>
 
       <p className="switch-copy">

@@ -105,16 +105,12 @@ export function FolderPicker({
   const displayValue = isLoading
     ? 'Lädt…'
     : folder || (folders.length === 0 ? 'Noch kein Ordner' : 'Ordner wählen')
+  const userLabel = String(username || '').toUpperCase()
+  const pathLabel = folder ? `${userLabel} / ${folder}` : userLabel
 
   return (
-    <section className="folder-picker" aria-label="Zielordner" ref={rootRef}>
-      <div className="folder-picker-head">
-        <p className="folder-picker-label">Zielordner</p>
-        <p className="folder-picker-path">
-          {username}
-          {folder ? ` / ${folder}` : ''}
-        </p>
-      </div>
+    <section className="folder-picker" aria-label="Ordner" ref={rootRef}>
+      {pathLabel && <p className="folder-picker-path">{pathLabel}</p>}
 
       <div className="folder-picker-row">
         <div className="folder-field">
@@ -174,16 +170,15 @@ export function FolderPicker({
             disabled={disabled || isCreating || !newFolder.trim()}
             type="submit"
           >
-            {isCreating ? 'Erstellt...' : 'Erstellen'}
+            {isCreating ? 'Wird erstellt…' : 'Erstellen'}
           </button>
         </form>
       </div>
 
-      {isLoading && <p className="folder-hint">Ordner werden geladen...</p>}
+      {isLoading && <p className="folder-hint">Ordner werden geladen…</p>}
       {!isLoading && !folder && (
         <p className="folder-hint">
-          Erstelle zuerst einen Ordner, z.B. Urlaub — dann landen Fotos und Videos
-          dort unter {username}.
+          Erstelle zuerst einen Ordner. Fotos und Videos werden dort unter {String(username || '').toUpperCase()} gespeichert.
         </p>
       )}
       {error && <p className="form-error">{error}</p>}

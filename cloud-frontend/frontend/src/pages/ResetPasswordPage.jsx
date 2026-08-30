@@ -28,16 +28,16 @@ export function ResetPasswordPage({ error, notice, isSubmitting, onResetPassword
       <p className="eyebrow">Passwort</p>
       <h1>Zurücksetzen</h1>
       <p className="auth-copy">
-        Gib Username und Wiederherstellungscode ein. Den Code findest du in der Datenbank unter users.recovery_code.
+        Gib deinen Benutzernamen und den Wiederherstellungscode ein, den du bei der Registrierung erhalten hast.
       </p>
 
       <label>
-        Username
+        Benutzername
         <input
           autoComplete="username"
           name="username"
           onChange={(event) => setUsername(event.target.value)}
-          placeholder="dein username"
+          placeholder="Benutzername"
           required
           type="text"
           value={username}
@@ -64,7 +64,7 @@ export function ResetPasswordPage({ error, notice, isSubmitting, onResetPassword
           autoComplete="new-password"
           name="password"
           onChange={(event) => setPassword(event.target.value)}
-          placeholder="neues passwort"
+          placeholder="Neues Passwort"
           minLength={6}
           required
           type="password"
@@ -78,7 +78,7 @@ export function ResetPasswordPage({ error, notice, isSubmitting, onResetPassword
           autoComplete="new-password"
           name="passwordRepeat"
           onChange={(event) => setPasswordRepeat(event.target.value)}
-          placeholder="passwort wiederholen"
+          placeholder="Passwort wiederholen"
           minLength={6}
           required
           type="password"
@@ -90,7 +90,7 @@ export function ResetPasswordPage({ error, notice, isSubmitting, onResetPassword
       {notice && !localError && !error && <p className="form-success">{notice}</p>}
 
       <button className="primary-button" disabled={isSubmitting} type="submit">
-        {isSubmitting ? 'Speichern...' : 'Passwort speichern'}
+        {isSubmitting ? 'Wird gespeichert…' : 'Passwort speichern'}
       </button>
 
       <p className="switch-copy">

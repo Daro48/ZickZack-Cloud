@@ -1,180 +1,302 @@
 import { useMemo, useRef, useState } from 'react'
 import { FolderPicker } from '../components/FolderPicker.jsx'
-import { TimelinePicker, MONTH_NAMES } from '../components/TimelinePicker.jsx'
 import { Topbar } from '../components/Topbar.jsx'
-import { fetchWeekMedia, uploadMedia } from '../services/mediaApi.js'
+import { uploadMedia } from '../services/mediaApi.js'
+import { isAllowedMediaFile } from '../utils/mediaTypes.js'
 
-function buildYears() {
-  const currentYear = new Date().getFullYear()
-  return Array.from({ length: 5 }, (_, index) => currentYear + index)
-}
-
-function daysInMonth(year, month) {
-  return new Date(year, month, 0).getDate()
-}
-
-function buildWeeks(year, month) {
-  if (!year || !month) {
-    return []
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return '—'
   }
-
-  const lastDay = daysInMonth(year, month)
-  const weekCount = Math.ceil(lastDay / 7)
-
-  return Array.from({ length: weekCount }, (_, index) => {
-    const week = index + 1
-    const startDay = index * 7 + 1
-    const endDay = Math.min(week * 7, lastDay)
-    return {
-      week,
-      label: `${startDay}. – ${endDay}.`,
-    }
-  })
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function currentSelection() {
-  const now = new Date()
+function createQueueItem(file) {
+  const uid =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+
   return {
-    year: now.getFullYear(),
-    month: now.getMonth() + 1,
-    week: Math.floor((now.getDate() - 1) / 7) + 1,
+    id: `${file.name}-${file.size}-${file.lastModified}-${uid}`,
+    file,
+    name: file.name || 'Datei',
+    size: file.size,
+    status: 'pending',
+    message: '',
+    progress: 0,
+    loadedBytes: 0,
   }
 }
 
-export function HomePage({ username, onLogout, onGoBunch }) {
+function collectFilesFromDataTransfer(dataTransfer) {
+  const files = []
+  if (dataTransfer?.files?.length) {
+    files.push(...Array.from(dataTransfer.files))
+  }
+  return files.filter(isAllowedMediaFile)
+}
+
+export function HomePage({ username, onLogout, onGoCommunity }) {
   const fileInputRef = useRef(null)
-  const years = useMemo(() => buildYears(), [])
-  const months = useMemo(
-    () => Array.from({ length: 12 }, (_, index) => index + 1),
-    [],
-  )
-
   const [selectedFolder, setSelectedFolder] = useState('')
+  const [queue, setQueue] = useState([])
+  const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
-  const [uploadMessage, setUploadMessage] = useState('')
-  const [uploadError, setUploadError] = useState('')
+  const [summary, setSummary] = useState('')
+  const [activeBatchIds, setActiveBatchIds] = useState([])
 
-  const [selectedYear, setSelectedYear] = useState('')
-  const [selectedMonth, setSelectedMonth] = useState('')
-  const [selectedWeek, setSelectedWeek] = useState('')
-  const [openPanel, setOpenPanel] = useState('year')
+  const counts = useMemo(() => {
+    const pending = queue.filter((item) => item.status === 'pending').length
+    const uploading = queue.filter((item) => item.status === 'uploading').length
+    const done = queue.filter((item) => item.status === 'done').length
+    const failed = queue.filter((item) => item.status === 'error').length
+    return { pending, uploading, done, failed, total: queue.length }
+  }, [queue])
 
-  const [items, setItems] = useState([])
-  const [hasLoaded, setHasLoaded] = useState(false)
-  const [isLoadingMedia, setIsLoadingMedia] = useState(false)
-  const [timelineError, setTimelineError] = useState('')
+  const batchItems = useMemo(() => {
+    if (activeBatchIds.length === 0) {
+      return []
+    }
+    const idSet = new Set(activeBatchIds)
+    return queue.filter((item) => idSet.has(item.id))
+  }, [activeBatchIds, queue])
 
-  const weeks = useMemo(
-    () => buildWeeks(Number(selectedYear), Number(selectedMonth)),
-    [selectedYear, selectedMonth],
-  )
+  const overallProgress = useMemo(() => {
+    const source = batchItems.length > 0 ? batchItems : queue
+    if (source.length === 0) {
+      return { percent: 0, loaded: 0, total: 0, doneCount: 0, totalCount: 0 }
+    }
 
-  const selectedWeekMeta = weeks.find(
-    (entry) => Number(entry.week) === Number(selectedWeek),
-  )
+    let loaded = 0
+    let total = 0
+    let doneCount = 0
 
-  async function loadMedia(year, month, week) {
-    if (!year || !month || !week) {
+    for (const item of source) {
+      total += item.size
+      if (item.status === 'done' || item.status === 'error') {
+        loaded += item.size
+        doneCount += 1
+      } else if (item.status === 'uploading') {
+        loaded += Math.min(item.loadedBytes || 0, item.size)
+      }
+    }
+
+    const percent =
+      total === 0 ? 0 : Math.min(100, Math.round((loaded / total) * 100))
+
+    return {
+      percent,
+      loaded,
+      total,
+      doneCount,
+      totalCount: source.length,
+    }
+  }, [batchItems, queue])
+
+  function addFiles(fileList) {
+    const selected = Array.from(fileList || [])
+    const incoming = selected.filter(isAllowedMediaFile).map(createQueueItem)
+
+    if (incoming.length === 0) {
+      if (selected.length > 0) {
+        setSummary('Keine gültigen Fotos/Videos erkannt. Bitte erneut wählen.')
+      }
       return
     }
 
-    setIsLoadingMedia(true)
-    setTimelineError('')
-    setHasLoaded(true)
-
-    try {
-      const data = await fetchWeekMedia(year, month, week)
-      setItems(data.items || [])
-    } catch (error) {
-      setTimelineError(error.message)
-      setItems([])
-    } finally {
-      setIsLoadingMedia(false)
-    }
+        setSummary(`${incoming.length} Datei(en) hinzugefügt. Jetzt den Upload starten.`)
+    setQueue((current) => [...current, ...incoming])
   }
 
   function openFilePicker() {
-    if (!selectedFolder) {
-      setUploadError('Bitte zuerst einen Ordner wählen oder erstellen.')
+    if (isUploading) {
       return
     }
     fileInputRef.current?.click()
   }
 
-  async function handleFilesSelected(event) {
-    const files = Array.from(event.target.files || [])
+  function handleFilesSelected(event) {
+    addFiles(event.target.files)
     event.target.value = ''
+  }
 
-    if (files.length === 0) {
+  function handleDragEnter(event) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!isUploading) {
+      setIsDragging(true)
+    }
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!isUploading) {
+      setIsDragging(true)
+    }
+  }
+
+  function handleDragLeave(event) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.currentTarget.contains(event.relatedTarget)) {
+      return
+    }
+    setIsDragging(false)
+  }
+
+  function handleDrop(event) {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragging(false)
+    if (isUploading) {
+      return
+    }
+    addFiles(collectFilesFromDataTransfer(event.dataTransfer))
+  }
+
+  function removeItem(id) {
+    if (isUploading) {
+      return
+    }
+    setQueue((current) => current.filter((item) => item.id !== id))
+  }
+
+  function clearQueue() {
+    if (isUploading) {
+      return
+    }
+    setQueue([])
+    setSummary('')
+    setActiveBatchIds([])
+  }
+
+  function clearFinished() {
+    if (isUploading) {
+      return
+    }
+    setQueue((current) =>
+      current.filter((item) => item.status !== 'done' && item.status !== 'error'),
+    )
+    setSummary('')
+    setActiveBatchIds([])
+  }
+
+  function updateItem(id, patch) {
+    setQueue((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    )
+  }
+
+  async function runUpload(items) {
+    if (items.length === 0 || isUploading) {
       return
     }
 
     if (!selectedFolder) {
-      setUploadError('Bitte zuerst einen Ordner wählen oder erstellen.')
+      setSummary('Bitte zuerst einen Ordner wählen oder erstellen.')
       return
     }
 
+    const batchIds = items.map((item) => item.id)
     setIsUploading(true)
-    setUploadMessage('')
-    setUploadError('')
+    setSummary('')
+    setActiveBatchIds(batchIds)
+
+    setQueue((current) =>
+      current.map((item) =>
+        batchIds.includes(item.id)
+          ? {
+              ...item,
+              status: 'pending',
+              message: '',
+              progress: 0,
+              loadedBytes: 0,
+            }
+          : item,
+      ),
+    )
+
+    const files = items.map((item) => ({
+      queueId: item.id,
+      file: item.file,
+    }))
 
     try {
-      const data = await uploadMedia(files, { folder: selectedFolder })
-      setUploadMessage(
-        data.message
-          ? `${data.message} Ordner: ${selectedFolder}`
-          : 'Upload fertig.',
-      )
-      if (data.errors?.length) {
-        setUploadError(
-          `${data.errors.length} Datei(en) konnten nicht hochgeladen werden.`,
-        )
-      }
+      const data = await uploadMedia(files, {
+        folder: selectedFolder,
+        onFileStart(queueId) {
+          updateItem(queueId, {
+            status: 'uploading',
+            message: '',
+            progress: 0,
+            loadedBytes: 0,
+          })
+        },
+        onFileProgress(queueId, file, loaded, total) {
+          const safeTotal = total || file.size || 1
+          const percent = Math.min(
+            100,
+            Math.round((loaded / safeTotal) * 100),
+          )
+          updateItem(queueId, {
+            status: 'uploading',
+            progress: percent,
+            loadedBytes: Math.min(loaded, file.size),
+            message: `${percent}%`,
+          })
+        },
+        onFileDone(queueId, file) {
+          updateItem(queueId, {
+            status: 'done',
+            message: 'Fertig',
+            progress: 100,
+            loadedBytes: file.size,
+          })
+        },
+        onFileError(queueId, _file, message) {
+          updateItem(queueId, {
+            status: 'error',
+            message,
+            progress: 0,
+          })
+        },
+      })
 
-      const selection = currentSelection()
-      setSelectedYear(String(selection.year))
-      setSelectedMonth(String(selection.month))
-      setSelectedWeek(String(selection.week))
-      setOpenPanel(null)
-      await loadMedia(selection.year, selection.month, selection.week)
+      const failedCount = data.errors?.length || 0
+      setSummary(
+        failedCount > 0
+          ? `${data.uploaded.length} hochgeladen nach ${selectedFolder}, ${failedCount} fehlgeschlagen.`
+          : `${data.uploaded.length} Datei(en) hochgeladen nach ${selectedFolder}.`,
+      )
     } catch (error) {
-      setUploadError(error.message)
+      setSummary(error.message || 'Upload fehlgeschlagen.')
     } finally {
       setIsUploading(false)
     }
   }
 
-  function handleTogglePanel(panel) {
-    setOpenPanel((current) => (current === panel ? null : panel))
+  async function startUpload() {
+    const pending = queue.filter((item) => item.status === 'pending')
+    await runUpload(pending)
   }
 
-  function handleSelectYear(year) {
-    setSelectedYear(String(year))
-    setSelectedMonth('')
-    setSelectedWeek('')
-    setItems([])
-    setHasLoaded(false)
-    setTimelineError('')
-    setOpenPanel('month')
+  async function retryFailed() {
+    const failed = queue.filter((item) => item.status === 'error')
+    await runUpload(failed)
   }
 
-  function handleSelectMonth(month) {
-    setSelectedMonth(String(month))
-    setSelectedWeek('')
-    setItems([])
-    setHasLoaded(false)
-    setTimelineError('')
-    setOpenPanel('week')
-  }
-
-  async function handleSelectWeek(week) {
-    setSelectedWeek(String(week))
-    setOpenPanel(null)
-    setItems([])
-    setHasLoaded(false)
-    setTimelineError('')
-    await loadMedia(Number(selectedYear), Number(selectedMonth), Number(week))
-  }
+  const showProgressPanel = counts.total > 0
+  const activeLabel = isUploading
+    ? `Datei ${Math.min(overallProgress.doneCount + 1, overallProgress.totalCount)} von ${overallProgress.totalCount}`
+    : `${counts.done + counts.failed}/${counts.total} Dateien`
 
   return (
     <div className="app-shell">
@@ -183,29 +305,29 @@ export function HomePage({ username, onLogout, onGoBunch }) {
         center={
           <nav className="topbar-nav" aria-label="Hauptnavigation">
             <button className="nav-link is-active" type="button">
-              Home
+              Upload
             </button>
             <button
               className="nav-link"
-              onClick={onGoBunch}
+              onClick={onGoCommunity}
               type="button"
             >
-              Bunch Upload
+              Community
             </button>
           </nav>
         }
         action={
           <button className="secondary-button" type="button" onClick={onLogout}>
-            Logout
+            Abmelden
           </button>
         }
       />
 
-      <main className="home-page">
-        <header className="home-header">
+      <main className="app-page upload-page">
+        <header className="page-header">
           <div>
-            <p className="eyebrow">Deine Cloud</p>
-            <h1>{username}</h1>
+            <p className="eyebrow">Cloud</p>
+            <h1>Upload</h1>
           </div>
         </header>
 
@@ -216,7 +338,46 @@ export function HomePage({ username, onLogout, onGoBunch }) {
           username={username}
         />
 
-        <section className="home-upload" aria-label="Schnell-Upload">
+        {showProgressPanel && (
+          <section
+            className={`upload-progress-panel${isUploading ? ' is-active' : ''}`}
+            aria-label="Upload-Fortschritt"
+          >
+            <div className="upload-progress-head">
+              <div className="upload-stats">
+                <span>{activeLabel}</span>
+                <span>{overallProgress.percent}%</span>
+                <span>
+                  {formatBytes(overallProgress.loaded)} /{' '}
+                  {formatBytes(overallProgress.total)}
+                </span>
+                {counts.failed > 0 && (
+                  <span className="upload-stat-error">
+                    {counts.failed} Fehler
+                  </span>
+                )}
+              </div>
+              {isUploading && (
+                <span className="upload-progress-live">Upload läuft…</span>
+              )}
+            </div>
+
+            <div
+              className="upload-progress"
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={overallProgress.percent}
+              role="progressbar"
+            >
+              <div
+                className="upload-progress-bar"
+                style={{ width: `${overallProgress.percent}%` }}
+              />
+            </div>
+          </section>
+        )}
+
+        <section className="upload-section" aria-label="Dateien hinzufügen">
           <input
             ref={fileInputRef}
             accept="image/*,video/*,.heic,.heif,.mov,.mp4,.m4v,.webm,.3gp"
@@ -225,98 +386,135 @@ export function HomePage({ username, onLogout, onGoBunch }) {
             onChange={handleFilesSelected}
             type="file"
           />
+
           <button
-            className="primary-button upload-button"
-            disabled={isUploading || !selectedFolder}
+            className={`dropzone${isDragging ? ' is-dragging' : ''}${isUploading ? ' is-disabled' : ''}`}
+            disabled={isUploading}
             onClick={openFilePicker}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
             type="button"
           >
-            {isUploading ? 'Uploading...' : 'Upload'}
+            <span className="dropzone-title">
+              Dateien hierher ziehen oder auswählen
+            </span>
+            <span className="dropzone-copy">
+              Fotos und Videos. Anschließend den Upload starten.
+            </span>
           </button>
+
+          {summary && counts.total === 0 && (
+            <p className="form-error">{summary}</p>
+          )}
         </section>
 
-        {(uploadMessage || uploadError) && (
-          <section className="upload-status" aria-live="polite">
-            {uploadMessage && <p className="upload-ok">{uploadMessage}</p>}
-            {uploadError && <p className="form-error">{uploadError}</p>}
-          </section>
-        )}
-
-        <TimelinePicker
-          months={months}
-          onSelectMonth={handleSelectMonth}
-          onSelectWeek={handleSelectWeek}
-          onSelectYear={handleSelectYear}
-          onTogglePanel={handleTogglePanel}
-          openPanel={openPanel}
-          selectedMonth={selectedMonth}
-          selectedWeek={selectedWeek}
-          selectedYear={selectedYear}
-          weeks={weeks}
-          years={years}
-        />
-
-        {timelineError && (
-          <section className="upload-status">
-            <p className="form-error">{timelineError}</p>
-          </section>
-        )}
-
-        <section className="media-section" aria-label="Medien der Woche">
-          {selectedWeekMeta && (
-            <div className="media-heading-row">
-              <p className="media-heading">
-                {MONTH_NAMES[Number(selectedMonth) - 1]} {selectedYear}
-              </p>
-              <p className="media-subheading">
-                Woche {selectedWeek} · {selectedWeekMeta.label}
-              </p>
-            </div>
-          )}
-
-          {isLoadingMedia ? (
-            <p className="empty-home">Lädt…</p>
-          ) : !hasLoaded ? (
-            <div className="empty-panel">
-              <p>Jahr, Monat und Woche wählen.</p>
-              <span>Fotos und Videos erscheinen erst nach der Wochenwahl.</span>
-            </div>
-          ) : items.length === 0 ? (
-            <div className="empty-panel">
-              <p>Diese Woche ist noch leer.</p>
-              <span>Lade oben etwas hoch, dann erscheint es hier.</span>
-            </div>
-          ) : (
-            <div className="media-grid">
-              {items.map((item) => (
-                <article className="media-card" key={`${item.type}-${item.id}`}>
-                  <div className="media-frame">
-                    {item.type === 'photo' ? (
-                      <img
-                        alt={item.original_name}
-                        className="media-thumb"
-                        loading="lazy"
-                        src={item.url}
-                      />
-                    ) : (
-                      <video
-                        className="media-thumb"
-                        controls
-                        preload="metadata"
-                        src={item.url}
-                      />
+        {counts.total > 0 && (
+          <section className="upload-section" aria-label="Upload-Warteschlange">
+            <p className="upload-queue-count">
+              {counts.pending} wartend
+              {counts.uploading > 0 ? ` · ${counts.uploading} aktiv` : ''}
+              {counts.done > 0 ? ` · ${counts.done} fertig` : ''}
+              {counts.failed > 0 ? ` · ${counts.failed} Fehler` : ''}
+            </p>
+            <ul className="upload-queue">
+              {queue.map((item) => (
+                <li className={`upload-item status-${item.status}`} key={item.id}>
+                  <div className="upload-item-main">
+                    <span className="upload-item-name">{item.name}</span>
+                    <span className="upload-item-size">
+                      {formatBytes(item.size)}
+                      {item.status === 'uploading' &&
+                        ` · ${formatBytes(item.loadedBytes)}`}
+                    </span>
+                    {(item.status === 'uploading' || item.progress > 0) && (
+                      <div className="upload-item-progress">
+                        <div
+                          className="upload-item-progress-bar"
+                          style={{
+                            width: `${
+                              item.status === 'done'
+                                ? 100
+                                : item.status === 'error'
+                                  ? 0
+                                  : item.progress
+                            }%`,
+                          }}
+                        />
+                      </div>
                     )}
                   </div>
-                  <div className="media-meta">
-                    <span>{item.type === 'photo' ? 'Foto' : 'Video'}</span>
-                    <span>{item.original_name}</span>
+                  <div className="upload-item-side">
+                    <span className="upload-item-status">
+                      {item.status === 'pending' && 'Wartend'}
+                      {item.status === 'uploading' && `${item.progress}%`}
+                      {item.status === 'done' && 'Fertig'}
+                      {item.status === 'error' && (item.message || 'Fehler')}
+                    </span>
+                    {!isUploading && item.status !== 'uploading' && (
+                      <button
+                        className="upload-remove"
+                        onClick={() => removeItem(item.id)}
+                        type="button"
+                      >
+                        Entfernen
+                      </button>
+                    )}
                   </div>
-                </article>
+                </li>
               ))}
-            </div>
+            </ul>
+          </section>
+        )}
+      </main>
+
+      {counts.total > 0 && (
+        <section className="upload-action-bar" aria-label="Upload-Aktionen">
+          <div className="upload-actions">
+            <button
+              className="primary-button upload-button"
+              disabled={isUploading || counts.pending === 0 || !selectedFolder}
+              onClick={startUpload}
+              type="button"
+            >
+              {isUploading
+                ? 'Wird hochgeladen…'
+                : `Upload starten (${counts.pending})`}
+            </button>
+            <button
+              className="secondary-button"
+              disabled={isUploading || counts.failed === 0}
+              onClick={retryFailed}
+              type="button"
+            >
+              Erneut versuchen
+            </button>
+            <button
+              className="secondary-button"
+              disabled={isUploading || counts.total === 0}
+              onClick={clearFinished}
+              type="button"
+            >
+              Abgeschlossene entfernen
+            </button>
+            <button
+              className="secondary-button"
+              disabled={isUploading || counts.total === 0}
+              onClick={clearQueue}
+              type="button"
+            >
+              Liste leeren
+            </button>
+          </div>
+
+          {summary && (
+            <p className={counts.failed > 0 ? 'form-error' : 'upload-ok'}>
+              {summary}
+            </p>
           )}
         </section>
-      </main>
+      )}
     </div>
   )
 }

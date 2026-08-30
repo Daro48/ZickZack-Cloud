@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import { AuthLayout } from './components/AuthLayout.jsx'
-import { BunchUploadPage } from './pages/BunchUploadPage.jsx'
 import { HomePage } from './pages/HomePage.jsx'
+import { Community } from './pages/Community.jsx'
 import { LoginPage } from './pages/LoginPage.jsx'
 import { RecoveryCodePage } from './pages/RecoveryCodePage.jsx'
 import { RegisterPage } from './pages/RegisterPage.jsx'
@@ -164,17 +164,17 @@ function App() {
       <HomePage
         username={user.username}
         onLogout={handleLogout}
-        onGoBunch={() => setPage('bunch')}
+        onGoCommunity={() => setPage('community')}
       />
     )
   }
 
-  if (page === 'bunch' && user) {
+  if (page === 'community' && user) {
     return (
-      <BunchUploadPage
+      <Community
         username={user.username}
         onLogout={handleLogout}
-        onGoHome={() => setPage('home')}
+        onGoUpload={() => setPage('home')}
       />
     )
   }
