@@ -3,6 +3,7 @@ import './App.css'
 import { AuthLayout } from './components/AuthLayout.jsx'
 import { HomePage } from './pages/HomePage.jsx'
 import { Community } from './pages/Community.jsx'
+import { ViewContent } from './pages/ViewContent.jsx'
 import { LoginPage } from './pages/LoginPage.jsx'
 import { RecoveryCodePage } from './pages/RecoveryCodePage.jsx'
 import { RegisterPage } from './pages/RegisterPage.jsx'
@@ -164,6 +165,18 @@ function App() {
       <HomePage
         username={user.username}
         onLogout={handleLogout}
+        onGoContent={() => setPage('content')}
+        onGoCommunity={() => setPage('community')}
+      />
+    )
+  }
+
+  if (page === 'content' && user) {
+    return (
+      <ViewContent
+        username={user.username}
+        onLogout={handleLogout}
+        onGoUpload={() => setPage('home')}
         onGoCommunity={() => setPage('community')}
       />
     )
@@ -175,6 +188,7 @@ function App() {
         username={user.username}
         onLogout={handleLogout}
         onGoUpload={() => setPage('home')}
+        onGoContent={() => setPage('content')}
       />
     )
   }

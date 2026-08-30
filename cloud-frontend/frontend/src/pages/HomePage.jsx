@@ -43,7 +43,7 @@ function collectFilesFromDataTransfer(dataTransfer) {
   return files.filter(isAllowedMediaFile)
 }
 
-export function HomePage({ username, onLogout, onGoCommunity }) {
+export function HomePage({ username, onLogout, onGoContent, onGoCommunity }) {
   const fileInputRef = useRef(null)
   const [selectedFolder, setSelectedFolder] = useState('')
   const [queue, setQueue] = useState([])
@@ -306,6 +306,13 @@ export function HomePage({ username, onLogout, onGoCommunity }) {
           <nav className="topbar-nav" aria-label="Hauptnavigation">
             <button className="nav-link is-active" type="button">
               Upload
+            </button>
+            <button
+              className="nav-link"
+              onClick={onGoContent}
+              type="button"
+            >
+              Inhalte
             </button>
             <button
               className="nav-link"

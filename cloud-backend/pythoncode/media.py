@@ -2,7 +2,12 @@ from calendar import monthrange
 from datetime import datetime
 from flask import Blueprint, jsonify, request, send_file
 from database import get_database_connection
-from upload import MEDIA_ROOT, require_user
+from upload import (
+    MEDIA_ROOT,
+    require_user,
+    sanitize_folder_name,
+    sanitize_username_dir,
+)
 
 media_bp = Blueprint("media", __name__)
 
@@ -25,6 +30,16 @@ def parse_positive_int(value):
         return None
     if number < 1:
         return None
+    return number
+
+
+def parse_non_negative_int(value, default=0):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    if number < 0:
+        return default
     return number
 
 
@@ -109,6 +124,136 @@ def list_media_for_week():
                 "start_day": start.day,
                 "end_day": end.day,
                 "items": media,
+            }
+        )
+    finally:
+        connection.close()
+
+
+@media_bp.get("/bp/media/folder")
+def list_media_for_folder():
+    folder_name = sanitize_folder_name(request.args.get("folder"))
+    if not folder_name:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Bitte einen Ordner wählen.",
+                }
+            ),
+            400,
+        )
+
+    offset = parse_non_negative_int(request.args.get("offset"), 0)
+    limit = parse_positive_int(request.args.get("limit")) or 5
+    limit = min(limit, 50)
+
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        safe_username = sanitize_username_dir(user["username"])
+        if not safe_username:
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Benutzerordner ungültig.",
+                    }
+                ),
+                400,
+            )
+
+        path_prefix = f"{safe_username}/{folder_name}/"
+        params = (user["id"], path_prefix, path_prefix)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    (
+                        SELECT COUNT(*)
+                        FROM photos
+                        WHERE user_id = %s
+                          AND LEFT(stored_path, CHAR_LENGTH(%s)) = %s
+                    ) + (
+                        SELECT COUNT(*)
+                        FROM videos
+                        WHERE user_id = %s
+                          AND LEFT(stored_path, CHAR_LENGTH(%s)) = %s
+                    ) AS total
+                """,
+                params + params,
+            )
+            total = int((cursor.fetchone() or {}).get("total") or 0)
+
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    type,
+                    original_name,
+                    mime_type,
+                    size_bytes,
+                    created_at
+                FROM (
+                    SELECT
+                        id,
+                        'photo' AS type,
+                        original_name,
+                        mime_type,
+                        size_bytes,
+                        created_at
+                    FROM photos
+                    WHERE user_id = %s
+                      AND LEFT(stored_path, CHAR_LENGTH(%s)) = %s
+                    UNION ALL
+                    SELECT
+                        id,
+                        'video' AS type,
+                        original_name,
+                        mime_type,
+                        size_bytes,
+                        created_at
+                    FROM videos
+                    WHERE user_id = %s
+                      AND LEFT(stored_path, CHAR_LENGTH(%s)) = %s
+                ) AS media
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                params + params + (limit, offset),
+            )
+            rows = cursor.fetchall()
+
+        items = []
+        for item in rows:
+            created_at = item["created_at"]
+            items.append(
+                {
+                    "id": item["id"],
+                    "type": item["type"],
+                    "original_name": item["original_name"],
+                    "mime_type": item["mime_type"],
+                    "size_bytes": item["size_bytes"],
+                    "created_at": created_at.isoformat(sep=" ", timespec="seconds")
+                    if created_at
+                    else None,
+                    "url": f"/bp/media/file/{item['type']}/{item['id']}",
+                }
+            )
+
+        return jsonify(
+            {
+                "status": "ok",
+                "folder": folder_name,
+                "offset": offset,
+                "limit": limit,
+                "total": total,
+                "has_more": offset + len(items) < total,
+                "items": items,
             }
         )
     finally:

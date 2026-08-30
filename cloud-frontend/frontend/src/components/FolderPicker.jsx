@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createFolder, fetchFolders } from '../services/mediaApi.js'
 
 export function FolderPicker({
+  allowCreate = true,
   disabled = false,
   folder,
   onFolderChange,
@@ -112,9 +113,13 @@ export function FolderPicker({
     <section className="folder-picker" aria-label="Ordner" ref={rootRef}>
       {pathLabel && <p className="folder-picker-path">{pathLabel}</p>}
 
-      <div className="folder-picker-row">
+      <div
+        className={`folder-picker-row${allowCreate ? '' : ' is-select-only'}`}
+      >
         <div className="folder-field">
-          <span className="folder-field-label">Vorhandener Ordner</span>
+          <span className="folder-field-label">
+            {allowCreate ? 'Vorhandener Ordner' : 'Ordner'}
+          </span>
           <button
             aria-expanded={isOpen}
             aria-haspopup="listbox"
@@ -153,33 +158,38 @@ export function FolderPicker({
           )}
         </div>
 
-        <form className="folder-create" onSubmit={handleCreateFolder}>
-          <label className="folder-field">
-            <span className="folder-field-label">Neuen Ordner erstellen</span>
-            <input
-              disabled={disabled || isCreating}
-              maxLength={64}
-              onChange={(event) => setNewFolder(event.target.value)}
-              placeholder="z.B. Urlaub"
-              type="text"
-              value={newFolder}
-            />
-          </label>
-          <button
-            className="secondary-button"
-            disabled={disabled || isCreating || !newFolder.trim()}
-            type="submit"
-          >
-            {isCreating ? 'Wird erstellt…' : 'Erstellen'}
-          </button>
-        </form>
+        {allowCreate && (
+          <form className="folder-create" onSubmit={handleCreateFolder}>
+            <label className="folder-field">
+              <span className="folder-field-label">Neuen Ordner erstellen</span>
+              <input
+                disabled={disabled || isCreating}
+                maxLength={64}
+                onChange={(event) => setNewFolder(event.target.value)}
+                placeholder="z.B. Urlaub"
+                type="text"
+                value={newFolder}
+              />
+            </label>
+            <button
+              className="secondary-button"
+              disabled={disabled || isCreating || !newFolder.trim()}
+              type="submit"
+            >
+              {isCreating ? 'Wird erstellt…' : 'Erstellen'}
+            </button>
+          </form>
+        )}
       </div>
 
       {isLoading && <p className="folder-hint">Ordner werden geladen…</p>}
-      {!isLoading && !folder && (
+      {!isLoading && !folder && allowCreate && (
         <p className="folder-hint">
           Erstelle zuerst einen Ordner. Fotos und Videos werden dort unter {String(username || '').toUpperCase()} gespeichert.
         </p>
+      )}
+      {!isLoading && !folder && !allowCreate && (
+        <p className="folder-hint">Noch keine Ordner vorhanden.</p>
       )}
       {error && <p className="form-error">{error}</p>}
     </section>

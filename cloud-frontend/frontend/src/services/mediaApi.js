@@ -183,6 +183,24 @@ export async function uploadMedia(files, options = {}) {
   }
 }
 
+export async function fetchFolderMedia(folder, { offset = 0, limit = 5 } = {}) {
+  const params = new URLSearchParams({
+    folder,
+    offset: String(offset),
+    limit: String(limit),
+  })
+  const response = await fetch(`/bp/media/folder?${params.toString()}`, {
+    credentials: 'include',
+  })
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Inhalte konnten nicht geladen werden.')
+  }
+
+  return data
+}
+
 export async function fetchWeekMedia(year, month, week) {
   const response = await fetch(
     `/bp/media?year=${year}&month=${month}&week=${week}`,

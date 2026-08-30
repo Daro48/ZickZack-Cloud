@@ -1,6 +1,6 @@
 import { Topbar } from '../components/Topbar.jsx'
 
-export function Community({ username, onLogout, onGoUpload }) {
+export function Community({ username, onLogout, onGoUpload, onGoContent }) {
   return (
     <div className="app-shell">
       <Topbar
@@ -13,6 +13,13 @@ export function Community({ username, onLogout, onGoUpload }) {
               type="button"
             >
               Upload
+            </button>
+            <button
+              className="nav-link"
+              onClick={onGoContent}
+              type="button"
+            >
+              Inhalte
             </button>
             <button className="nav-link is-active" type="button">
               Community
