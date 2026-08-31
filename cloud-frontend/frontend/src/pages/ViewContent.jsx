@@ -3,7 +3,7 @@ import { FolderPicker } from '../components/FolderPicker.jsx'
 import { Topbar } from '../components/Topbar.jsx'
 import { fetchFolderMedia } from '../services/mediaApi.js'
 
-const FOLDER_PAGE_SIZE = 50
+const FOLDER_PAGE_SIZE = 1000
 
 export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
   const [selectedFolder, setSelectedFolder] = useState('')
@@ -133,8 +133,9 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
                       <img
                         alt={item.original_name}
                         className="media-thumb"
+                        decoding="async"
                         loading="lazy"
-                        src={item.url}
+                        src={item.thumb_url || item.url}
                       />
                     ) : (
                       <video

@@ -4,12 +4,18 @@ import uuid
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
+from PIL import Image, ImageOps
+from pillow_heif import register_heif_opener
 from database import get_database_connection
 from login import SESSION_COOKIE_NAME, delete_expired_sessions, get_user_by_session
+
+register_heif_opener()
 
 upload_bp = Blueprint("upload", __name__)
 
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", "/data/media"))
+THUMB_MAX_EDGE = int(os.getenv("THUMB_MAX_EDGE", "512"))
+THUMB_QUALITY = int(os.getenv("THUMB_QUALITY", "80"))
 ALLOWED_IMAGE_PREFIXES = ("image/",)
 ALLOWED_VIDEO_PREFIXES = ("video/",)
 ALLOWED_IMAGE_EXTENSIONS = {
@@ -57,6 +63,25 @@ MIME_BY_EXTENSION = {
     ".mpeg": "video/mpeg",
 }
 FOLDER_NAME_RE = re.compile(r"^[A-Za-z0-9_\- ]{1,64}$")
+
+
+def thumb_path_for(stored_path: str) -> Path:
+    relative = Path(stored_path)
+    return MEDIA_ROOT / relative.parent.parent / "thumbs" / f"{relative.stem}.webp"
+
+
+def create_thumbnail(source: Path, stored_path: str) -> bool:
+    target = thumb_path_for(stored_path)
+    try:
+        with Image.open(source) as image:
+            image = ImageOps.exif_transpose(image)
+            image.thumbnail((THUMB_MAX_EDGE, THUMB_MAX_EDGE))
+            mode = "RGBA" if "A" in image.getbands() else "RGB"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            image.convert(mode).save(target, "WEBP", quality=THUMB_QUALITY, method=4)
+        return True
+    except Exception:
+        return False
 
 
 def classify_media(mime_type: str, filename: str | None = None):
@@ -294,6 +319,9 @@ def upload_media():
 
             file.save(absolute_path)
             size_bytes = absolute_path.stat().st_size
+
+            if media_kind == "photo":
+                create_thumbnail(absolute_path, stored_path)
 
             table = "photos" if media_kind == "photo" else "videos"
             with connection.cursor() as cursor:

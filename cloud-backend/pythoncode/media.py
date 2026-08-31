@@ -1,5 +1,6 @@
 from calendar import monthrange
 from datetime import datetime
+from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file
 from database import get_database_connection
 from upload import (
@@ -7,9 +8,40 @@ from upload import (
     require_user,
     sanitize_folder_name,
     sanitize_username_dir,
+    thumb_path_for,
 )
 
 media_bp = Blueprint("media", __name__)
+
+MEDIA_CACHE_SECONDS = 31536000
+
+
+def resolve_media_path(path: Path):
+    absolute_path = path.resolve()
+    try:
+        absolute_path.relative_to(MEDIA_ROOT.resolve())
+    except ValueError:
+        return None
+    return absolute_path
+
+
+def thumb_url_for(media_type, media_id):
+    if media_type != "photo":
+        return None
+    return f"/bp/media/thumb/photo/{media_id}"
+
+
+def send_media_file(path, mimetype, download_name=None):
+    response = send_file(
+        path,
+        mimetype=mimetype,
+        as_attachment=False,
+        download_name=download_name,
+        conditional=True,
+        max_age=MEDIA_CACHE_SECONDS,
+    )
+    response.cache_control.private = True
+    return response
 
 
 def week_range(year, month, week):
@@ -112,6 +144,7 @@ def list_media_for_week():
                     "size_bytes": item["size_bytes"],
                     "created_at": created_at.isoformat(sep=" ", timespec="seconds"),
                     "url": f"/bp/media/file/{item['type']}/{item['id']}",
+                    "thumb_url": thumb_url_for(item["type"], item["id"]),
                 }
             )
 
@@ -146,7 +179,7 @@ def list_media_for_folder():
 
     offset = parse_non_negative_int(request.args.get("offset"), 0)
     limit = parse_positive_int(request.args.get("limit")) or 5
-    limit = min(limit, 50)
+    limit = min(limit, 1000)
 
     connection = get_database_connection()
     try:
@@ -242,6 +275,7 @@ def list_media_for_folder():
                     if created_at
                     else None,
                     "url": f"/bp/media/file/{item['type']}/{item['id']}",
+                    "thumb_url": thumb_url_for(item["type"], item["id"]),
                 }
             )
 
@@ -286,21 +320,51 @@ def get_media_file(media_type, media_id):
         if not row:
             return jsonify({"status": "error", "message": "Nicht gefunden."}), 404
 
-        absolute_path = (MEDIA_ROOT / row["stored_path"]).resolve()
-        media_root = MEDIA_ROOT.resolve()
-        try:
-            absolute_path.relative_to(media_root)
-        except ValueError:
+        absolute_path = resolve_media_path(MEDIA_ROOT / row["stored_path"])
+        if absolute_path is None:
             return jsonify({"status": "error", "message": "Ungültiger Pfad."}), 400
         if not absolute_path.is_file():
             return jsonify({"status": "error", "message": "Datei fehlt."}), 404
 
-        return send_file(
+        return send_media_file(
             absolute_path,
-            mimetype=row["mime_type"],
-            as_attachment=False,
+            row["mime_type"],
             download_name=row["original_name"],
-            conditional=True,
         )
+    finally:
+        connection.close()
+
+
+@media_bp.get("/bp/media/thumb/photo/<int:media_id>")
+def get_photo_thumbnail(media_id):
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT stored_path, mime_type
+                FROM photos
+                WHERE id = %s AND user_id = %s
+                """,
+                (media_id, user["id"]),
+            )
+            row = cursor.fetchone()
+
+        if not row:
+            return jsonify({"status": "error", "message": "Nicht gefunden."}), 404
+
+        thumb_path = resolve_media_path(thumb_path_for(row["stored_path"]))
+        if thumb_path is not None and thumb_path.is_file():
+            return send_media_file(thumb_path, "image/webp")
+
+        original_path = resolve_media_path(MEDIA_ROOT / row["stored_path"])
+        if original_path is None or not original_path.is_file():
+            return jsonify({"status": "error", "message": "Datei fehlt."}), 404
+
+        return send_media_file(original_path, row["mime_type"])
     finally:
         connection.close()
