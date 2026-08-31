@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 
 function MediaCardBase({ item }) {
   const [isPlaying, setIsPlaying] = useState(false)
+  const [hasPoster, setHasPoster] = useState(Boolean(item.thumb_url))
   const isPhoto = item.type === 'photo'
 
   return (
@@ -21,17 +22,28 @@ function MediaCardBase({ item }) {
             className="media-thumb"
             controls
             playsInline
+            poster={hasPoster ? item.thumb_url : undefined}
             preload="metadata"
             src={item.url}
           />
         ) : (
           <button
-            className="media-thumb media-video-placeholder"
+            aria-label={`${item.original_name} abspielen`}
+            className="media-video-preview"
             onClick={() => setIsPlaying(true)}
             type="button"
           >
-            <span className="media-video-icon" aria-hidden="true" />
-            <span className="media-video-hint">Video abspielen</span>
+            {hasPoster && (
+              <img
+                alt=""
+                className="media-video-poster"
+                decoding="async"
+                loading="lazy"
+                onError={() => setHasPoster(false)}
+                src={item.thumb_url}
+              />
+            )}
+            <span className="media-play-badge" aria-hidden="true" />
           </button>
         )}
       </div>

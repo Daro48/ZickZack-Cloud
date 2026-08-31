@@ -8,7 +8,7 @@ from flask import Blueprint, Response, jsonify, request, send_file
 from database import get_database_connection
 from upload import (
     MEDIA_ROOT,
-    create_thumbnail,
+    create_media_thumbnail,
     require_user,
     sanitize_folder_name,
     thumb_relative_path,
@@ -88,12 +88,6 @@ def media_path(relative_path):
     except ValueError:
         return None
     return candidate
-
-
-def thumb_url_for(media_type, media_id):
-    if media_type != "photo":
-        return None
-    return f"/bp/media/thumb/photo/{media_id}"
 
 
 def apply_media_cache_headers(response):
@@ -186,7 +180,7 @@ def serialize_item(row):
         if created_at
         else None,
         "url": f"/bp/media/file/{row['type']}/{row['id']}",
-        "thumb_url": thumb_url_for(row["type"], row["id"]),
+        "thumb_url": f"/bp/media/thumb/{row['type']}/{row['id']}",
     }
 
 
@@ -479,10 +473,10 @@ def get_media_file(media_type, media_id):
     return response
 
 
-def build_thumbnail_on_demand(original_path, stored_path, thumb_path):
+def build_thumbnail_on_demand(media_type, original_path, stored_path, thumb_path):
     """Zieht ein fehlendes Thumbnail nach, höchstens ON_DEMAND_THUMB_WORKERS
     gleichzeitig, damit eine frisch geöffnete Galerie den Server nicht mit
-    parallelen Bilddekodierungen blockiert."""
+    parallelen Dekodierungen blockiert."""
     if not _thumb_slots.acquire(timeout=ON_DEMAND_THUMB_WAIT_SECONDS):
         return None
     try:
@@ -490,7 +484,7 @@ def build_thumbnail_on_demand(original_path, stored_path, thumb_path):
         entry = read_thumb_entry(thumb_path)
         if entry is not None:
             return entry
-        if not create_thumbnail(original_path, stored_path):
+        if not create_media_thumbnail(media_type, original_path, stored_path):
             return None
     finally:
         _thumb_slots.release()
@@ -498,14 +492,17 @@ def build_thumbnail_on_demand(original_path, stored_path, thumb_path):
     return read_thumb_entry(thumb_path)
 
 
-@media_bp.get("/bp/media/thumb/photo/<int:media_id>")
-def get_photo_thumbnail(media_id):
+@media_bp.get("/bp/media/thumb/<media_type>/<int:media_id>")
+def get_media_thumbnail(media_type, media_id):
+    if media_type not in ("photo", "video"):
+        return jsonify({"status": "error", "message": "Ungültiger Typ."}), 400
+
     connection = get_database_connection()
     try:
         user = require_user(connection)
         if not user:
             return jsonify({"status": "error", "message": "Not authenticated"}), 401
-        meta = load_media_meta(connection, user["id"], "photo", media_id)
+        meta = load_media_meta(connection, user["id"], media_type, media_id)
     finally:
         connection.close()
 
@@ -513,28 +510,34 @@ def get_photo_thumbnail(media_id):
         return jsonify({"status": "error", "message": "Nicht gefunden."}), 404
 
     stored_path = meta["stored_path"]
-    cache_key = (user["id"], media_id)
+    cache_key = (user["id"], media_type, media_id)
 
     entry = lookup_thumb_entry(cache_key)
     if entry is not None:
         return send_thumb_entry(entry)
 
     thumb_path = media_path(thumb_relative_path(stored_path))
-    if thumb_path is None:
+    original_path = media_path(stored_path)
+    if thumb_path is None or original_path is None:
         return jsonify({"status": "error", "message": "Ungültiger Pfad."}), 400
 
     entry = read_thumb_entry(thumb_path)
     if entry is None:
-        original_path = media_path(stored_path)
-        if original_path is None:
-            return jsonify({"status": "error", "message": "Ungültiger Pfad."}), 400
+        entry = build_thumbnail_on_demand(
+            media_type, original_path, stored_path, thumb_path
+        )
 
-        entry = build_thumbnail_on_demand(original_path, stored_path, thumb_path)
-        if entry is None:
-            response = send_media_file(original_path, meta["mime_type"])
-            if response is None:
-                return jsonify({"status": "error", "message": "Datei fehlt."}), 404
-            return response
+    if entry is None:
+        # Für Fotos ist das Original ein brauchbarer Ersatz. Ein Video als
+        # Bildquelle auszuliefern wäre dagegen ein Vielfaches der Datenmenge,
+        # dort zeigt das Frontend stattdessen seinen Platzhalter.
+        if media_type == "video":
+            return jsonify({"status": "error", "message": "Kein Vorschaubild."}), 404
+
+        response = send_media_file(original_path, meta["mime_type"])
+        if response is None:
+            return jsonify({"status": "error", "message": "Datei fehlt."}), 404
+        return response
 
     store_thumb_entry(cache_key, entry)
     return send_thumb_entry(entry)

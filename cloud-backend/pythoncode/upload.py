@@ -1,6 +1,8 @@
 import os
 import re
+import subprocess
 import uuid
+from io import BytesIO
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
@@ -24,6 +26,8 @@ MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", "/data/media"))
 THUMB_MAX_EDGE = int(os.getenv("THUMB_MAX_EDGE", "512"))
 THUMB_QUALITY = int(os.getenv("THUMB_QUALITY", "80"))
 THUMB_METHOD = int(os.getenv("THUMB_METHOD", "4"))
+VIDEO_THUMB_SEEK_SECONDS = os.getenv("VIDEO_THUMB_SEEK", "1")
+VIDEO_THUMB_TIMEOUT_SECONDS = float(os.getenv("VIDEO_THUMB_TIMEOUT", "30"))
 ALLOWED_IMAGE_PREFIXES = ("image/",)
 ALLOWED_VIDEO_PREFIXES = ("video/",)
 ALLOWED_IMAGE_EXTENSIONS = {
@@ -84,40 +88,87 @@ def thumb_path_for(stored_path: str) -> Path:
     return MEDIA_ROOT / thumb_relative_path(stored_path)
 
 
-def create_thumbnail(source: Path, stored_path: str) -> bool:
+def write_thumbnail(image, stored_path: str) -> bool:
     target = thumb_path_for(stored_path)
     box = (THUMB_MAX_EDGE, THUMB_MAX_EDGE)
+
+    image.thumbnail(box, Image.Resampling.LANCZOS, reducing_gap=2.0)
+    mode = "RGBA" if "A" in image.getbands() else "RGB"
+    if image.mode != mode:
+        image = image.convert(mode)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Über eine temporäre Datei schreiben: ein abgebrochener Schreibvorgang würde
+    # sonst ein halbes Thumbnail hinterlassen, das danach dauerhaft als gültig
+    # ausgeliefert wird.
+    staging = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        image.save(staging, "WEBP", quality=THUMB_QUALITY, method=THUMB_METHOD)
+        os.replace(staging, target)
+    except Exception:
+        staging.unlink(missing_ok=True)
+        raise
+    return True
+
+
+def create_photo_thumbnail(source: Path, stored_path: str) -> bool:
     try:
         with Image.open(source) as image:
             # JPEG und HEIF verkleinert dekodieren, statt erst das Vollbild zu
             # laden. Bei anderen Formaten ist der Aufruf wirkungslos.
-            image.draft("RGB", box)
-            image = ImageOps.exif_transpose(image)
-            image.thumbnail(box, Image.Resampling.LANCZOS, reducing_gap=2.0)
-
-            mode = "RGBA" if "A" in image.getbands() else "RGB"
-            if image.mode != mode:
-                image = image.convert(mode)
-
-            target.parent.mkdir(parents=True, exist_ok=True)
-            # Über eine temporäre Datei schreiben: ein abgebrochener Schreibvorgang
-            # würde sonst ein halbes Thumbnail hinterlassen, das danach dauerhaft
-            # als gültig ausgeliefert wird.
-            staging = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
-            try:
-                image.save(
-                    staging,
-                    "WEBP",
-                    quality=THUMB_QUALITY,
-                    method=THUMB_METHOD,
-                )
-                os.replace(staging, target)
-            except Exception:
-                staging.unlink(missing_ok=True)
-                raise
-        return True
+            image.draft("RGB", (THUMB_MAX_EDGE, THUMB_MAX_EDGE))
+            return write_thumbnail(ImageOps.exif_transpose(image), stored_path)
     except Exception:
         return False
+
+
+def extract_video_frame(source: Path, seek_seconds: str):
+    command = [
+        "ffmpeg",
+        "-nostdin",
+        "-loglevel", "error",
+        "-ss", seek_seconds,
+        "-i", str(source),
+        "-frames:v", "1",
+        "-vf", f"scale={THUMB_MAX_EDGE}:{THUMB_MAX_EDGE}"
+               ":force_original_aspect_ratio=decrease",
+        "-f", "image2pipe",
+        "-c:v", "png",
+        "-",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            timeout=VIDEO_THUMB_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0 or not result.stdout:
+        return None
+    return result.stdout
+
+
+def create_video_thumbnail(source: Path, stored_path: str) -> bool:
+    # Der erste Frame ist häufig schwarz, bei sehr kurzen Clips gibt es dafür
+    # keinen Frame an der späteren Position.
+    frame = extract_video_frame(source, VIDEO_THUMB_SEEK_SECONDS)
+    if not frame:
+        frame = extract_video_frame(source, "0")
+    if not frame:
+        return False
+
+    try:
+        with Image.open(BytesIO(frame)) as image:
+            return write_thumbnail(image, stored_path)
+    except Exception:
+        return False
+
+
+def create_media_thumbnail(media_kind: str, source: Path, stored_path: str) -> bool:
+    if media_kind == "video":
+        return create_video_thumbnail(source, stored_path)
+    return create_photo_thumbnail(source, stored_path)
 
 
 def classify_media(mime_type: str, filename: str | None = None):
@@ -355,8 +406,7 @@ def upload_media():
             file.save(absolute_path)
             size_bytes = absolute_path.stat().st_size
 
-            if media_kind == "photo":
-                create_thumbnail(absolute_path, stored_path)
+            create_media_thumbnail(media_kind, absolute_path, stored_path)
 
             table = "photos" if media_kind == "photo" else "videos"
             with connection.cursor() as cursor:
