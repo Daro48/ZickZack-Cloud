@@ -1,4 +1,6 @@
 import secrets
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, make_response
 from werkzeug.security import check_password_hash
@@ -11,6 +13,14 @@ SESSION_COOKIE_NAME = "session_token"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 MAX_LOGIN_ATTEMPTS = 20
 LOCKOUT_MINUTES = 15
+
+SESSION_CACHE_TTL_SECONDS = float(os.getenv("SESSION_CACHE_TTL", "30"))
+SESSION_CACHE_MAX_ENTRIES = int(os.getenv("SESSION_CACHE_MAX_ENTRIES", "4096"))
+SESSION_CLEANUP_INTERVAL_SECONDS = float(os.getenv("SESSION_CLEANUP_INTERVAL", "300"))
+
+_session_cache = {}
+_session_cache_lock = threading.Lock()
+_last_session_cleanup = 0.0
 
 
 def now_utc():
@@ -25,8 +35,57 @@ def get_client_ip():
 
 
 def delete_expired_sessions(connection):
+    global _last_session_cleanup
+
     with connection.cursor() as cursor:
         cursor.execute("DELETE FROM sessions WHERE expires_at <= UTC_TIMESTAMP()")
+    _last_session_cleanup = time.monotonic()
+
+
+def delete_expired_sessions_throttled(connection):
+    """Aufräumen ist Wartung und darf nicht an jedem Request hängen."""
+    if time.monotonic() - _last_session_cleanup < SESSION_CLEANUP_INTERVAL_SECONDS:
+        return False
+    delete_expired_sessions(connection)
+    return True
+
+
+def cache_session_user(session_token, user):
+    if not session_token:
+        return
+    with _session_cache_lock:
+        if len(_session_cache) >= SESSION_CACHE_MAX_ENTRIES:
+            _session_cache.clear()
+        _session_cache[session_token] = (user, time.monotonic())
+
+
+def invalidate_session(session_token):
+    if not session_token:
+        return
+    with _session_cache_lock:
+        _session_cache.pop(session_token, None)
+
+
+def invalidate_user_sessions(user_id):
+    with _session_cache_lock:
+        for token, (user, _) in list(_session_cache.items()):
+            if user and user["id"] == user_id:
+                del _session_cache[token]
+
+
+def resolve_session_user(connection, session_token):
+    """Wie get_user_by_session, aber für SESSION_CACHE_TTL_SECONDS aus dem Cache."""
+    if not session_token:
+        return None
+
+    with _session_cache_lock:
+        cached = _session_cache.get(session_token)
+    if cached and time.monotonic() - cached[1] < SESSION_CACHE_TTL_SECONDS:
+        return cached[0]
+
+    user = get_user_by_session(connection, session_token)
+    cache_session_user(session_token, user)
+    return user
 
 
 def get_login_attempt(connection, ip_address):
@@ -220,8 +279,8 @@ def me():
     connection = get_database_connection()
 
     try:
-        delete_expired_sessions(connection)
-        user = get_user_by_session(connection, session_token)
+        delete_expired_sessions_throttled(connection)
+        user = resolve_session_user(connection, session_token)
         connection.commit()
 
         if not user:
@@ -252,7 +311,7 @@ def logout():
     connection = get_database_connection()
 
     try:
-        delete_expired_sessions(connection)
+        delete_expired_sessions_throttled(connection)
 
         if session_token:
             with connection.cursor() as cursor:
@@ -261,6 +320,7 @@ def logout():
                 )
 
         connection.commit()
+        invalidate_session(session_token)
 
         response = make_response(
             jsonify(

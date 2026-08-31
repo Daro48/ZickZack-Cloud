@@ -21,7 +21,8 @@ CREATE TABLE sessions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id)
         REFERENCES users(id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    INDEX idx_sessions_expires_at (expires_at)
 );
 
 CREATE TABLE login_attempts (
@@ -38,6 +39,7 @@ CREATE TABLE photos (
     original_name VARCHAR(255) NOT NULL,
     stored_name VARCHAR(255) NOT NULL,
     stored_path VARCHAR(512) NOT NULL,
+    folder VARCHAR(64) NOT NULL,
     mime_type VARCHAR(100) NOT NULL,
     size_bytes BIGINT UNSIGNED NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -45,6 +47,7 @@ CREATE TABLE photos (
         REFERENCES users(id)
         ON DELETE CASCADE,
     INDEX idx_photos_user_created (user_id, created_at),
+    INDEX idx_photos_user_folder_created (user_id, folder, created_at),
     UNIQUE KEY uq_photos_user_stored_name (user_id, stored_name)
 );
 
@@ -54,6 +57,7 @@ CREATE TABLE videos (
     original_name VARCHAR(255) NOT NULL,
     stored_name VARCHAR(255) NOT NULL,
     stored_path VARCHAR(512) NOT NULL,
+    folder VARCHAR(64) NOT NULL,
     mime_type VARCHAR(100) NOT NULL,
     size_bytes BIGINT UNSIGNED NOT NULL,
     duration_seconds INT UNSIGNED NULL,
@@ -62,5 +66,6 @@ CREATE TABLE videos (
         REFERENCES users(id)
         ON DELETE CASCADE,
     INDEX idx_videos_user_created (user_id, created_at),
+    INDEX idx_videos_user_folder_created (user_id, folder, created_at),
     UNIQUE KEY uq_videos_user_stored_name (user_id, stored_name)
 );

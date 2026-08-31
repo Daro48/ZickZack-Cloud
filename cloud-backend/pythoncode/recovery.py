@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from werkzeug.security import generate_password_hash
 from database import get_database_connection
+from login import invalidate_user_sessions
 import hmac
 import pymysql
 import secrets
@@ -145,6 +146,7 @@ def reset_password():
             )
 
         connection.commit()
+        invalidate_user_sessions(user["id"])
 
         return jsonify(
             {

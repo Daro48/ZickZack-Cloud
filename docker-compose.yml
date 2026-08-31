@@ -3,6 +3,12 @@ services:
     image: mysql:8.4
     container_name: cloud_db
     restart: unless-stopped
+    command:
+      - --innodb-buffer-pool-size=${MYSQL_BUFFER_POOL_SIZE:-256M}
+      - --innodb-flush-neighbors=0
+      - --host-cache-size=0
+      - --skip-name-resolve
+      - --max-connections=${MYSQL_MAX_CONNECTIONS:-64}
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
@@ -44,9 +50,18 @@ services:
       DB_PASSWORD: ${MYSQL_PASSWORD}
       MEDIA_ROOT: /data/media
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-2147483648}
-      WAITRESS_THREADS: ${WAITRESS_THREADS:-8}
+      WAITRESS_THREADS: ${WAITRESS_THREADS:-16}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-16}
+      SESSION_CACHE_TTL: ${SESSION_CACHE_TTL:-30}
+      SESSION_CLEANUP_INTERVAL: ${SESSION_CLEANUP_INTERVAL:-300}
+      MEDIA_META_CACHE_MAX: ${MEDIA_META_CACHE_MAX:-50000}
+      THUMB_CACHE_MB: ${THUMB_CACHE_MB:-192}
+      THUMB_MAX_EDGE: ${THUMB_MAX_EDGE:-512}
+      THUMB_QUALITY: ${THUMB_QUALITY:-80}
+      ON_DEMAND_THUMB_WORKERS: ${ON_DEMAND_THUMB_WORKERS:-3}
+      MAX_IMAGE_PIXELS: ${MAX_IMAGE_PIXELS:-80000000}
     depends_on:
       db:
         condition: service_healthy

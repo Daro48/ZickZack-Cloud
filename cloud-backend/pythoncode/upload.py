@@ -7,15 +7,23 @@ from werkzeug.utils import secure_filename
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 from database import get_database_connection
-from login import SESSION_COOKIE_NAME, delete_expired_sessions, get_user_by_session
+from login import (
+    SESSION_COOKIE_NAME,
+    delete_expired_sessions_throttled,
+    resolve_session_user,
+)
 
 register_heif_opener()
+
+# Deckelt den Speicher, den ein einzelnes Bild beim Dekodieren belegen kann.
+Image.MAX_IMAGE_PIXELS = int(os.getenv("MAX_IMAGE_PIXELS", "80000000"))
 
 upload_bp = Blueprint("upload", __name__)
 
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", "/data/media"))
 THUMB_MAX_EDGE = int(os.getenv("THUMB_MAX_EDGE", "512"))
 THUMB_QUALITY = int(os.getenv("THUMB_QUALITY", "80"))
+THUMB_METHOD = int(os.getenv("THUMB_METHOD", "4"))
 ALLOWED_IMAGE_PREFIXES = ("image/",)
 ALLOWED_VIDEO_PREFIXES = ("video/",)
 ALLOWED_IMAGE_EXTENSIONS = {
@@ -24,6 +32,7 @@ ALLOWED_IMAGE_EXTENSIONS = {
     ".png",
     ".gif",
     ".webp",
+    ".avif",
     ".heic",
     ".heif",
     ".bmp",
@@ -47,6 +56,7 @@ MIME_BY_EXTENSION = {
     ".png": "image/png",
     ".gif": "image/gif",
     ".webp": "image/webp",
+    ".avif": "image/avif",
     ".heic": "image/heic",
     ".heif": "image/heif",
     ".bmp": "image/bmp",
@@ -65,20 +75,46 @@ MIME_BY_EXTENSION = {
 FOLDER_NAME_RE = re.compile(r"^[A-Za-z0-9_\- ]{1,64}$")
 
 
-def thumb_path_for(stored_path: str) -> Path:
+def thumb_relative_path(stored_path: str) -> Path:
     relative = Path(stored_path)
-    return MEDIA_ROOT / relative.parent.parent / "thumbs" / f"{relative.stem}.webp"
+    return relative.parent.parent / "thumbs" / f"{relative.stem}.webp"
+
+
+def thumb_path_for(stored_path: str) -> Path:
+    return MEDIA_ROOT / thumb_relative_path(stored_path)
 
 
 def create_thumbnail(source: Path, stored_path: str) -> bool:
     target = thumb_path_for(stored_path)
+    box = (THUMB_MAX_EDGE, THUMB_MAX_EDGE)
     try:
         with Image.open(source) as image:
+            # JPEG und HEIF verkleinert dekodieren, statt erst das Vollbild zu
+            # laden. Bei anderen Formaten ist der Aufruf wirkungslos.
+            image.draft("RGB", box)
             image = ImageOps.exif_transpose(image)
-            image.thumbnail((THUMB_MAX_EDGE, THUMB_MAX_EDGE))
+            image.thumbnail(box, Image.Resampling.LANCZOS, reducing_gap=2.0)
+
             mode = "RGBA" if "A" in image.getbands() else "RGB"
+            if image.mode != mode:
+                image = image.convert(mode)
+
             target.parent.mkdir(parents=True, exist_ok=True)
-            image.convert(mode).save(target, "WEBP", quality=THUMB_QUALITY, method=4)
+            # Über eine temporäre Datei schreiben: ein abgebrochener Schreibvorgang
+            # würde sonst ein halbes Thumbnail hinterlassen, das danach dauerhaft
+            # als gültig ausgeliefert wird.
+            staging = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+            try:
+                image.save(
+                    staging,
+                    "WEBP",
+                    quality=THUMB_QUALITY,
+                    method=THUMB_METHOD,
+                )
+                os.replace(staging, target)
+            except Exception:
+                staging.unlink(missing_ok=True)
+                raise
         return True
     except Exception:
         return False
@@ -116,10 +152,9 @@ def resolve_mime_type(mime_type: str, filename: str | None = None, media_kind: s
 
 def require_user(connection):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
-    delete_expired_sessions(connection)
-    user = get_user_by_session(connection, session_token)
-    connection.commit()
-    return user
+    if delete_expired_sessions_throttled(connection):
+        connection.commit()
+    return resolve_session_user(connection, session_token)
 
 
 def sanitize_username_dir(username: str) -> str | None:
@@ -328,14 +363,16 @@ def upload_media():
                 cursor.execute(
                     f"""
                     INSERT INTO {table}
-                        (user_id, original_name, stored_name, stored_path, mime_type, size_bytes)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                        (user_id, original_name, stored_name, stored_path, folder,
+                         mime_type, size_bytes)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         user_id,
                         original_name,
                         stored_name,
                         stored_path,
+                        folder_name,
                         mime_type,
                         size_bytes,
                     ),
