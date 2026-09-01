@@ -169,7 +169,7 @@ def login():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Username and password are required",
+                    "message": "Benutzername und Passwort sind erforderlich.",
                 }
             ),
             400,
@@ -189,7 +189,7 @@ def login():
                 jsonify(
                     {
                         "status": "error",
-                        "message": "Too many login attempts. Please try again later.",
+                        "message": "Zu viele Anmeldeversuche. Bitte später erneut versuchen.",
                     }
                 ),
                 429,
@@ -211,7 +211,7 @@ def login():
                 jsonify(
                     {
                         "status": "error",
-                        "message": "Invalid username or password",
+                        "message": "Ungültiger Benutzername oder Passwort.",
                     }
                 ),
                 401,
@@ -241,7 +241,7 @@ def login():
             jsonify(
                 {
                     "status": "ok",
-                    "message": "Login successful!",
+                    "message": "Anmeldung erfolgreich.",
                     "user": {
                         "id": user["id"],
                         "username": user["username"],
@@ -264,7 +264,7 @@ def login():
     except Exception:
         return (
             jsonify(
-                {"status": "error", "message": "Login failed! Please try again."}
+                {"status": "error", "message": "Anmeldung fehlgeschlagen. Bitte erneut versuchen."}
             ),
             500,
         )
@@ -288,7 +288,7 @@ def me():
                 jsonify(
                     {
                         "status": "error",
-                        "message": "Not authenticated",
+                        "message": "Nicht angemeldet",
                     }
                 ),
                 401,
@@ -326,7 +326,7 @@ def logout():
             jsonify(
                 {
                     "status": "ok",
-                    "message": "Logout successful!",
+                    "message": "Abgemeldet.",
                 }
             )
         )

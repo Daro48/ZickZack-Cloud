@@ -18,7 +18,7 @@ def register():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Registration is currently disabled",
+                    "message": "Registrierung ist derzeit deaktiviert.",
                 }
             ),
             403,
@@ -31,7 +31,7 @@ def register():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Username and password are required",
+                    "message": "Benutzername und Passwort sind erforderlich.",
                 }
             ),
             400,
@@ -45,7 +45,7 @@ def register():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Username must be at least 3 characters long",
+                    "message": "Der Benutzername muss mindestens 3 Zeichen haben.",
                 }
             ),
             400,
@@ -55,7 +55,7 @@ def register():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Password must be at least 6 characters long",
+                    "message": "Das Passwort muss mindestens 6 Zeichen haben.",
                 }
             ),
             400,
@@ -83,7 +83,7 @@ def register():
             jsonify(
                 {
                     "status": "ok",
-                    "message": "Registration successful!",
+                    "message": "Registrierung erfolgreich.",
                     "recovery_code": recovery_code,
                 }
             ),
@@ -95,7 +95,7 @@ def register():
             jsonify(
                 {
                     "status": "error",
-                    "message": "User already exists",
+                    "message": "Dieser Benutzername ist bereits vergeben.",
                 }
             ),
             409,

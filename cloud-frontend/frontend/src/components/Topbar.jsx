@@ -1,10 +1,25 @@
-export function Topbar({ action, username, center }) {
+export function Topbar({ action, username, center, onGoHome }) {
+  const logo = (
+    <>
+      Cloud
+      <span className="topbar-version">Version 1.1.1</span>
+    </>
+  )
+
   return (
     <header className="topbar">
-      <a className="topbar-logo" href="/" aria-label="Startseite">
-        Cloud
-        <span className="topbar-version">Version 1.1.1</span>
-      </a>
+      {onGoHome ? (
+        <button
+          aria-label="Zur Startseite"
+          className="topbar-logo"
+          onClick={onGoHome}
+          type="button"
+        >
+          {logo}
+        </button>
+      ) : (
+        <span className="topbar-logo">{logo}</span>
+      )}
 
       <div className="topbar-center">{center}</div>
 

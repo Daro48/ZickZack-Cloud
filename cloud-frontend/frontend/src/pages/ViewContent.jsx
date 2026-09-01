@@ -10,7 +10,13 @@ import { fetchFolderMedia } from '../services/mediaApi.js'
 const FOLDER_PAGE_SIZE = 200
 const PREFETCH_MARGIN = '800px 0px'
 
-export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
+export function ViewContent({
+  username,
+  onLogout,
+  onGoHome,
+  onGoUpload,
+  onGoCommunity,
+}) {
   const [selectedFolder, setSelectedFolder] = useState('')
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(null)
@@ -86,6 +92,13 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
 
   const canLoadMore = hasLoaded && hasMore
 
+  useEffect(() => {
+    if (!selectedFolder || hasLoaded || isLoading) {
+      return
+    }
+    loadPage()
+  }, [selectedFolder])
+
   const closeViewer = useCallback(() => {
     setViewerIndex(null)
   }, [])
@@ -147,6 +160,7 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
     <div className="app-shell">
       <Topbar
         username={username}
+        onGoHome={onGoHome}
         center={
           <nav className="topbar-nav" aria-label="Hauptnavigation">
             <button
@@ -198,7 +212,7 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
           {!selectedFolder ? (
             <div className="empty-panel">
               <p>Ordner wählen.</p>
-              <span>Danach die Inhalte über den Knopf laden.</span>
+              <span>Danach erscheinen die Fotos und Videos hier.</span>
             </div>
           ) : hasLoaded && items.length === 0 ? (
             <div className="empty-panel">
@@ -222,34 +236,31 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
             </div>
           ) : (
             <div className="empty-panel">
-              <p>Noch nichts geladen.</p>
-              <span>
-                Mit dem Knopf werden die ersten {FOLDER_PAGE_SIZE} Dateien
-                geladen, der Rest kommt beim Scrollen nach.
-              </span>
+              <p>Lädt…</p>
+              <span>Die ersten Dateien werden geladen.</span>
             </div>
           )}
 
           {canLoadMore && <div aria-hidden="true" ref={sentinelRef} />}
 
-          {selectedFolder && (!hasLoaded || hasMore) && (
+          {(isLoading || (hasLoaded && total !== null)) && (
             <div className="media-more">
-              <button
-                className="secondary-button media-load-button"
-                disabled={isLoading}
-                onClick={loadPage}
-                type="button"
-              >
-                {isLoading
-                  ? 'Lädt…'
-                  : hasLoaded
-                    ? `Nächste ${FOLDER_PAGE_SIZE}`
-                    : `${FOLDER_PAGE_SIZE} laden`}
-              </button>
+              {isLoading && (
+                <span className="media-more-status">Lädt weitere Dateien…</span>
+              )}
               {hasLoaded && total !== null && (
                 <span className="media-more-count">
                   {items.length} von {total}
                 </span>
+              )}
+              {error && !isLoading && (
+                <button
+                  className="ghost-button media-load-button"
+                  onClick={loadPage}
+                  type="button"
+                >
+                  Erneut laden
+                </button>
               )}
             </div>
           )}

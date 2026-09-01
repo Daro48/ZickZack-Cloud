@@ -43,7 +43,7 @@ function collectFilesFromDataTransfer(dataTransfer) {
   return files.filter(isAllowedMediaFile)
 }
 
-export function HomePage({ username, onLogout, onGoContent, onGoCommunity }) {
+export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommunity }) {
   const fileInputRef = useRef(null)
   const [selectedFolder, setSelectedFolder] = useState('')
   const [queue, setQueue] = useState([])
@@ -302,6 +302,7 @@ export function HomePage({ username, onLogout, onGoContent, onGoCommunity }) {
     <div className="app-shell">
       <Topbar
         username={username}
+        onGoHome={onGoHome}
         center={
           <nav className="topbar-nav" aria-label="Hauptnavigation">
             <button className="nav-link is-active" type="button">

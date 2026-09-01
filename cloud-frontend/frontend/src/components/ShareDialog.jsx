@@ -118,11 +118,18 @@ export function ShareDialog({ kind, folder, items = [], onClose, onShared }) {
     }
   }
 
+  function handleBackdrop(event) {
+    if (event.target === event.currentTarget && !isSaving) {
+      onClose()
+    }
+  }
+
   return createPortal(
     <div
       aria-labelledby="share-dialog-title"
       aria-modal="true"
       className="share-dialog"
+      onMouseDown={handleBackdrop}
       role="dialog"
     >
       <form className="share-dialog-panel" onSubmit={handleSubmit}>

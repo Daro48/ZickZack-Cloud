@@ -78,7 +78,7 @@ def reset_password():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Username, recovery code and password are required",
+                    "message": "Benutzername, Wiederherstellungscode und Passwort sind erforderlich.",
                 }
             ),
             400,
@@ -93,7 +93,7 @@ def reset_password():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Password must be at least 6 characters long",
+                    "message": "Das Passwort muss mindestens 6 Zeichen haben.",
                 }
             ),
             400,
@@ -127,7 +127,7 @@ def reset_password():
                 jsonify(
                     {
                         "status": "error",
-                        "message": "Invalid username or recovery code",
+                        "message": "Ungültiger Benutzername oder Wiederherstellungscode.",
                     }
                 ),
                 401,
@@ -151,7 +151,7 @@ def reset_password():
         return jsonify(
             {
                 "status": "ok",
-                "message": "Password updated. You can log in now.",
+                "message": "Passwort gespeichert. Du kannst dich jetzt anmelden.",
             }
         )
 
@@ -160,7 +160,7 @@ def reset_password():
             jsonify(
                 {
                     "status": "error",
-                    "message": "Could not reset password. Please try again.",
+                    "message": "Passwort konnte nicht zurückgesetzt werden. Bitte erneut versuchen.",
                 }
             ),
             500,

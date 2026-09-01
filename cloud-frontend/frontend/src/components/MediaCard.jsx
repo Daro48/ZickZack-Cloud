@@ -30,6 +30,9 @@ function MediaCardBase({
                 className="media-thumb"
                 decoding="async"
                 loading="lazy"
+                onError={(event) => {
+                  event.currentTarget.style.opacity = '0'
+                }}
                 src={item.thumb_url || item.url}
               />
             ) : (
@@ -40,6 +43,9 @@ function MediaCardBase({
                     className="media-video-poster"
                     decoding="async"
                     loading="lazy"
+                    onError={(event) => {
+                      event.currentTarget.remove()
+                    }}
                     src={item.thumb_url}
                   />
                 )}

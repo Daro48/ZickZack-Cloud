@@ -2,13 +2,16 @@ import { useState } from 'react'
 
 export function RecoveryCodePage({ recoveryCode, onContinue }) {
   const [copied, setCopied] = useState(false)
+  const [copyError, setCopyError] = useState(false)
 
   async function copyCode() {
     try {
       await navigator.clipboard.writeText(recoveryCode)
       setCopied(true)
+      setCopyError(false)
     } catch {
       setCopied(false)
+      setCopyError(true)
     }
   }
 
@@ -25,6 +28,12 @@ export function RecoveryCodePage({ recoveryCode, onContinue }) {
       <button className="secondary-button" onClick={copyCode} type="button">
         {copied ? 'Kopiert' : 'Code kopieren'}
       </button>
+
+      {copyError && (
+        <p className="form-error">
+          Kopieren nicht möglich. Schreibe den Code bitte ab.
+        </p>
+      )}
 
       <button className="primary-button" onClick={onContinue} type="button">
         Weiter zur Cloud

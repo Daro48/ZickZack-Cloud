@@ -47,6 +47,9 @@ function ShareCard({ share, onOpen, onDelete, isDeleting }) {
                 key={mediaKey(item)}
                 loading="lazy"
                 src={item.thumb_url || item.url}
+                onError={(event) => {
+                  event.currentTarget.style.opacity = '0'
+                }}
               />
             ))
           )}
@@ -94,7 +97,12 @@ function MediaPager({
     <section className="media-section" aria-label="Medien">
       {error && <p className="form-error">{error}</p>}
 
-      {hasLoaded && items.length === 0 ? (
+      {!hasLoaded && items.length === 0 ? (
+        <div className="empty-panel">
+          <p>Lädt…</p>
+          <span>Dateien werden geladen.</span>
+        </div>
+      ) : hasLoaded && items.length === 0 ? (
         <div className="empty-panel">
           <p>{emptyTitle}</p>
           <span>{emptyHint}</span>
@@ -118,24 +126,22 @@ function MediaPager({
 
       {canLoadMore && <div aria-hidden="true" ref={sentinelRef} />}
 
-      {(!hasLoaded || canLoadMore) && (
+      {(isLoading || (hasLoaded && total !== null)) && (
         <div className="media-more">
-          <button
-            className="secondary-button media-load-button"
-            disabled={isLoading}
-            onClick={loadPage}
-            type="button"
-          >
-            {isLoading
-              ? 'Lädt…'
-              : hasLoaded
-                ? `Nächste ${PAGE_SIZE}`
-                : `${PAGE_SIZE} laden`}
-          </button>
+          {isLoading && <span className="media-more-status">Lädt weitere Dateien…</span>}
           {hasLoaded && total !== null && (
             <span className="media-more-count">
               {items.length} von {total}
             </span>
+          )}
+          {error && !isLoading && (
+            <button
+              className="ghost-button media-load-button"
+              onClick={loadPage}
+              type="button"
+            >
+              Erneut laden
+            </button>
           )}
         </div>
       )}
@@ -143,7 +149,13 @@ function MediaPager({
   )
 }
 
-export function Community({ username, onLogout, onGoUpload, onGoContent }) {
+export function Community({
+  username,
+  onLogout,
+  onGoHome,
+  onGoUpload,
+  onGoContent,
+}) {
   const [tab, setTab] = useState('inbox')
   const [incoming, setIncoming] = useState([])
   const [outgoing, setOutgoing] = useState([])
@@ -396,6 +408,16 @@ export function Community({ username, onLogout, onGoUpload, onGoContent }) {
   }
 
   async function handleDeleteShare(share) {
+    const label =
+      share.kind === 'folder' ? share.folder : `${share.item_count} Datei(en)`
+    if (
+      !window.confirm(
+        `Freigabe „${label}“ wirklich beenden? Die Dateien bleiben bei dir gespeichert.`,
+      )
+    ) {
+      return
+    }
+
     setDeletingId(share.id)
     setFeedError('')
     try {
@@ -435,6 +457,7 @@ export function Community({ username, onLogout, onGoUpload, onGoContent }) {
     <div className="app-shell">
       <Topbar
         username={username}
+        onGoHome={onGoHome}
         center={
           <nav className="topbar-nav" aria-label="Hauptnavigation">
             <button className="nav-link" onClick={onGoUpload} type="button">

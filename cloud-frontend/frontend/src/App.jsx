@@ -16,6 +16,16 @@ import {
   resetPassword,
 } from './services/authApi.js'
 
+const PAGE_TITLES = {
+  login: 'Anmelden',
+  register: 'Registrieren',
+  'reset-password': 'Passwort zurücksetzen',
+  'recovery-code': 'Wiederherstellungscode',
+  home: 'Upload',
+  content: 'Inhalte',
+  community: 'Community',
+}
+
 function App() {
   const [page, setPage] = useState('login')
   const [user, setUser] = useState(null)
@@ -24,6 +34,11 @@ function App() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isCheckingSession, setIsCheckingSession] = useState(true)
   const [recoveryCode, setRecoveryCode] = useState('')
+  const [seenPages, setSeenPages] = useState({
+    home: true,
+    content: false,
+    community: false,
+  })
 
   useEffect(() => {
     let isMounted = true
@@ -54,6 +69,18 @@ function App() {
       isMounted = false
     }
   }, [])
+
+  useEffect(() => {
+    const label = PAGE_TITLES[page]
+    document.title = label ? `${label} · Cloud` : 'Cloud'
+  }, [page])
+
+  function openPage(nextPage) {
+    setSeenPages((current) =>
+      nextPage in current ? { ...current, [nextPage]: true } : current,
+    )
+    setPage(nextPage)
+  }
 
   async function handleLogin({ username, password }) {
     setIsSubmitting(true)
@@ -112,6 +139,7 @@ function App() {
       setUser(null)
       setAuthError('')
       setAuthNotice('')
+      setSeenPages({ home: true, content: false, community: false })
       setPage('login')
     }
   }
@@ -160,36 +188,41 @@ function App() {
     )
   }
 
-  if (page === 'home' && user) {
+  if (user && (page === 'home' || page === 'content' || page === 'community')) {
     return (
-      <HomePage
-        username={user.username}
-        onLogout={handleLogout}
-        onGoContent={() => setPage('content')}
-        onGoCommunity={() => setPage('community')}
-      />
-    )
-  }
-
-  if (page === 'content' && user) {
-    return (
-      <ViewContent
-        username={user.username}
-        onLogout={handleLogout}
-        onGoUpload={() => setPage('home')}
-        onGoCommunity={() => setPage('community')}
-      />
-    )
-  }
-
-  if (page === 'community' && user) {
-    return (
-      <Community
-        username={user.username}
-        onLogout={handleLogout}
-        onGoUpload={() => setPage('home')}
-        onGoContent={() => setPage('content')}
-      />
+      <>
+        <div hidden={page !== 'home'}>
+          <HomePage
+            username={user.username}
+            onLogout={handleLogout}
+            onGoHome={() => openPage('home')}
+            onGoContent={() => openPage('content')}
+            onGoCommunity={() => openPage('community')}
+          />
+        </div>
+        {seenPages.content && (
+          <div hidden={page !== 'content'}>
+            <ViewContent
+              username={user.username}
+              onLogout={handleLogout}
+              onGoHome={() => openPage('home')}
+              onGoUpload={() => openPage('home')}
+              onGoCommunity={() => openPage('community')}
+            />
+          </div>
+        )}
+        {seenPages.community && (
+          <div hidden={page !== 'community'}>
+            <Community
+              username={user.username}
+              onLogout={handleLogout}
+              onGoHome={() => openPage('home')}
+              onGoUpload={() => openPage('home')}
+              onGoContent={() => openPage('content')}
+            />
+          </div>
+        )}
+      </>
     )
   }
 
