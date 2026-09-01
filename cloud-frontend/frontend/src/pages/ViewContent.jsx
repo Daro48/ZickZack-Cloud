@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FolderPicker } from '../components/FolderPicker.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
+import { MediaViewer } from '../components/MediaViewer.jsx'
 import { Topbar } from '../components/Topbar.jsx'
 import { fetchFolderMedia } from '../services/mediaApi.js'
 
@@ -15,6 +16,7 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
   const [hasLoaded, setHasLoaded] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [viewerIndex, setViewerIndex] = useState(null)
   const loadIdRef = useRef(0)
   const isLoadingRef = useRef(false)
   const loadedCountRef = useRef(0)
@@ -31,6 +33,7 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
     setHasLoaded(false)
     setError('')
     setIsLoading(false)
+    setViewerIndex(null)
   }
 
   const loadPage = useCallback(async () => {
@@ -73,6 +76,10 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
   }, [selectedFolder])
 
   const canLoadMore = hasLoaded && hasMore
+
+  const closeViewer = useCallback(() => {
+    setViewerIndex(null)
+  }, [])
 
   useEffect(() => {
     const node = sentinelRef.current
@@ -155,8 +162,12 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
             </div>
           ) : items.length > 0 ? (
             <div className="media-grid">
-              {items.map((item) => (
-                <MediaCard item={item} key={`${item.type}-${item.id}`} />
+              {items.map((item, index) => (
+                <MediaCard
+                  item={item}
+                  key={`${item.type}-${item.id}`}
+                  onOpen={() => setViewerIndex(index)}
+                />
               ))}
             </div>
           ) : (
@@ -194,6 +205,15 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
           )}
         </section>
       </main>
+
+      {viewerIndex !== null && items[viewerIndex] && (
+        <MediaViewer
+          index={viewerIndex}
+          items={items}
+          onClose={closeViewer}
+          onIndexChange={setViewerIndex}
+        />
+      )}
     </div>
   )
 }

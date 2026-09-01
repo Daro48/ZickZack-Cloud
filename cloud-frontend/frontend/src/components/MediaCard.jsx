@@ -1,52 +1,42 @@
-import { memo, useState } from 'react'
+import { memo } from 'react'
 
-function MediaCardBase({ item }) {
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [hasPoster, setHasPoster] = useState(Boolean(item.thumb_url))
+function MediaCardBase({ item, onOpen }) {
   const isPhoto = item.type === 'photo'
+  const hasPoster = Boolean(item.thumb_url)
 
   return (
     <article className="media-card">
-      <div className="media-frame">
-        {isPhoto ? (
-          <img
-            alt={item.original_name}
-            className="media-thumb"
-            decoding="async"
-            loading="lazy"
-            src={item.thumb_url || item.url}
-          />
-        ) : isPlaying ? (
-          <video
-            autoPlay
-            className="media-thumb"
-            controls
-            playsInline
-            poster={hasPoster ? item.thumb_url : undefined}
-            preload="metadata"
-            src={item.url}
-          />
-        ) : (
-          <button
-            aria-label={`${item.original_name} abspielen`}
-            className="media-video-preview"
-            onClick={() => setIsPlaying(true)}
-            type="button"
-          >
-            {hasPoster && (
-              <img
-                alt=""
-                className="media-video-poster"
-                decoding="async"
-                loading="lazy"
-                onError={() => setHasPoster(false)}
-                src={item.thumb_url}
-              />
-            )}
-            <span className="media-play-badge" aria-hidden="true" />
-          </button>
-        )}
-      </div>
+      <button
+        aria-label={`${item.original_name} öffnen`}
+        className="media-open"
+        onClick={onOpen}
+        type="button"
+      >
+        <div className="media-frame">
+          {isPhoto ? (
+            <img
+              alt=""
+              className="media-thumb"
+              decoding="async"
+              loading="lazy"
+              src={item.thumb_url || item.url}
+            />
+          ) : (
+            <span className="media-video-preview">
+              {hasPoster && (
+                <img
+                  alt=""
+                  className="media-video-poster"
+                  decoding="async"
+                  loading="lazy"
+                  src={item.thumb_url}
+                />
+              )}
+              <span className="media-play-badge" aria-hidden="true" />
+            </span>
+          )}
+        </div>
+      </button>
       <div className="media-meta">
         <span>{isPhoto ? 'Foto' : 'Video'}</span>
         <span>{item.original_name}</span>

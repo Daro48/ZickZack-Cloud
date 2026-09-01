@@ -3,7 +3,7 @@ export function Topbar({ action, username, center }) {
     <header className="topbar">
       <a className="topbar-logo" href="/" aria-label="Startseite">
         Cloud
-        <span className="topbar-version">Version 1.0.1</span>
+        <span className="topbar-version">Version 1.1.1</span>
       </a>
 
       <div className="topbar-center">{center}</div>
