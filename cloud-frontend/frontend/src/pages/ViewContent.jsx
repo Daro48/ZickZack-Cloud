@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderPicker } from '../components/FolderPicker.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
 import { MediaViewer } from '../components/MediaViewer.jsx'
+import { ShareDialog } from '../components/ShareDialog.jsx'
 import { Topbar } from '../components/Topbar.jsx'
+import { mediaKey } from '../services/communityApi.js'
 import { fetchFolderMedia } from '../services/mediaApi.js'
 
 const FOLDER_PAGE_SIZE = 200
@@ -17,6 +19,10 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [viewerIndex, setViewerIndex] = useState(null)
+  const [selecting, setSelecting] = useState(false)
+  const [selectedKeys, setSelectedKeys] = useState(() => new Set())
+  const [shareTarget, setShareTarget] = useState(null)
+  const [shareNotice, setShareNotice] = useState('')
   const loadIdRef = useRef(0)
   const isLoadingRef = useRef(false)
   const loadedCountRef = useRef(0)
@@ -34,6 +40,9 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
     setError('')
     setIsLoading(false)
     setViewerIndex(null)
+    setSelecting(false)
+    setSelectedKeys(new Set())
+    setShareNotice('')
   }
 
   const loadPage = useCallback(async () => {
@@ -80,6 +89,40 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
   const closeViewer = useCallback(() => {
     setViewerIndex(null)
   }, [])
+
+  const closeShareDialog = useCallback(() => {
+    setShareTarget(null)
+  }, [])
+
+  const selectedItems = useMemo(
+    () => items.filter((item) => selectedKeys.has(mediaKey(item))),
+    [items, selectedKeys],
+  )
+
+  function toggleSelect(item) {
+    const key = mediaKey(item)
+    setSelectedKeys((current) => {
+      const next = new Set(current)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
+  function handleShared() {
+    const count = shareTarget?.kind === 'folder' ? 0 : selectedItems.length
+    setShareTarget(null)
+    setSelecting(false)
+    setSelectedKeys(new Set())
+    setShareNotice(
+      shareTarget?.kind === 'folder'
+        ? `Ordner ${selectedFolder} ist geteilt.`
+        : `${count === 1 ? '1 Datei' : `${count} Dateien`} geteilt.`,
+    )
+  }
 
   useEffect(() => {
     const node = sentinelRef.current
@@ -132,7 +175,7 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
         }
       />
 
-      <main className="app-page">
+      <main className={`app-page${selectedFolder ? ' has-share-bar' : ''}`}>
         <header className="page-header">
           <div>
             <p className="eyebrow">Cloud</p>
@@ -146,6 +189,8 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
           onFolderChange={handleFolderChange}
           username={username}
         />
+
+        {shareNotice && <p className="upload-ok share-notice">{shareNotice}</p>}
 
         <section className="media-section" aria-label="Inhalte">
           {error && <p className="form-error">{error}</p>}
@@ -165,8 +210,13 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
               {items.map((item, index) => (
                 <MediaCard
                   item={item}
-                  key={`${item.type}-${item.id}`}
+                  key={mediaKey(item)}
                   onOpen={() => setViewerIndex(index)}
+                  onToggleSelect={
+                    selecting ? () => toggleSelect(item) : undefined
+                  }
+                  selectable={selecting}
+                  selected={selectedKeys.has(mediaKey(item))}
                 />
               ))}
             </div>
@@ -206,12 +256,66 @@ export function ViewContent({ username, onLogout, onGoUpload, onGoCommunity }) {
         </section>
       </main>
 
+      {selectedFolder && (
+        <section className="share-action-bar" aria-label="Teilen">
+          <div className="share-actions">
+            <button
+              className="ghost-button"
+              onClick={() => {
+                setSelecting((current) => {
+                  if (current) {
+                    setSelectedKeys(new Set())
+                    return false
+                  }
+                  setViewerIndex(null)
+                  return true
+                })
+              }}
+              type="button"
+            >
+              {selecting ? 'Markieren beenden' : 'Dateien markieren'}
+            </button>
+            <button
+              className="secondary-button"
+              onClick={() =>
+                setShareTarget({ kind: 'folder', folder: selectedFolder })
+              }
+              type="button"
+            >
+              Ordner teilen
+            </button>
+            <button
+              className="primary-button"
+              disabled={!selecting || selectedItems.length === 0}
+              onClick={() =>
+                setShareTarget({ kind: 'items', items: selectedItems })
+              }
+              type="button"
+            >
+              {selectedItems.length > 0
+                ? `${selectedItems.length} teilen`
+                : 'Auswahl teilen'}
+            </button>
+          </div>
+        </section>
+      )}
+
       {viewerIndex !== null && items[viewerIndex] && (
         <MediaViewer
           index={viewerIndex}
           items={items}
           onClose={closeViewer}
           onIndexChange={setViewerIndex}
+        />
+      )}
+
+      {shareTarget && (
+        <ShareDialog
+          folder={shareTarget.folder}
+          items={shareTarget.items}
+          kind={shareTarget.kind}
+          onClose={closeShareDialog}
+          onShared={handleShared}
         />
       )}
     </div>

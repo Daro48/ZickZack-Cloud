@@ -75,6 +75,48 @@ def load_media_meta(connection, user_id, media_type, media_id):
     return row
 
 
+def load_accessible_media_meta(connection, viewer_id, media_type, media_id):
+    """Liefert Metadaten, wenn der User Besitzer ist oder die Datei geteilt bekam."""
+    meta = load_media_meta(connection, viewer_id, media_type, media_id)
+    if meta is not None:
+        return meta
+
+    table = "photos" if media_type == "photo" else "videos"
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT user_id, stored_path, mime_type, original_name, folder
+            FROM {table}
+            WHERE id = %s
+            """,
+            (media_id,),
+        )
+        row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    from community import user_can_access_shared_media
+
+    if not user_can_access_shared_media(
+        connection,
+        viewer_id,
+        row["user_id"],
+        media_type,
+        media_id,
+        row["folder"],
+    ):
+        return None
+
+    owner_meta = {
+        "stored_path": row["stored_path"],
+        "mime_type": row["mime_type"],
+        "original_name": row["original_name"],
+    }
+    cache_media_meta(row["user_id"], media_type, media_id, owner_meta)
+    return {**owner_meta, "owner_id": row["user_id"]}
+
+
 def media_path(relative_path):
     """Pfad unterhalb von MEDIA_ROOT, oder None wenn er ausserhalb liegt.
 
@@ -452,7 +494,7 @@ def get_media_file(media_type, media_id):
         user = require_user(connection)
         if not user:
             return jsonify({"status": "error", "message": "Not authenticated"}), 401
-        meta = load_media_meta(connection, user["id"], media_type, media_id)
+        meta = load_accessible_media_meta(connection, user["id"], media_type, media_id)
     finally:
         connection.close()
 
@@ -502,7 +544,7 @@ def get_media_thumbnail(media_type, media_id):
         user = require_user(connection)
         if not user:
             return jsonify({"status": "error", "message": "Not authenticated"}), 401
-        meta = load_media_meta(connection, user["id"], media_type, media_id)
+        meta = load_accessible_media_meta(connection, user["id"], media_type, media_id)
     finally:
         connection.close()
 
@@ -510,7 +552,7 @@ def get_media_thumbnail(media_type, media_id):
         return jsonify({"status": "error", "message": "Nicht gefunden."}), 404
 
     stored_path = meta["stored_path"]
-    cache_key = (user["id"], media_type, media_id)
+    cache_key = (meta.get("owner_id", user["id"]), media_type, media_id)
 
     entry = lookup_thumb_entry(cache_key)
     if entry is not None:

@@ -7,6 +7,7 @@ from login import login_bp
 from registration import auth_bp
 from recovery import recovery_bp
 from media import media_bp
+from community import community_bp
 from upload import upload_bp
 from schema import run_startup_migrations
 
@@ -23,6 +24,7 @@ app.register_blueprint(login_bp)
 app.register_blueprint(recovery_bp)
 app.register_blueprint(upload_bp)
 app.register_blueprint(media_bp)
+app.register_blueprint(community_bp)
 
 run_startup_migrations()
 

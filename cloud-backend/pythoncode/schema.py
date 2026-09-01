@@ -34,6 +34,19 @@ def index_exists(cursor, table, index_name):
     return bool(cursor.fetchone()["hits"])
 
 
+def table_exists(cursor, table):
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS hits
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = %s
+        """,
+        (table,),
+    )
+    return bool(cursor.fetchone()["hits"])
+
+
 def ensure_session_expiry_index(cursor):
     """Ohne den Index scannt das Session-Aufräumen die ganze Tabelle."""
     if index_exists(cursor, "sessions", "idx_sessions_expires_at"):
@@ -75,11 +88,71 @@ def ensure_folder_column(cursor, table):
         print(f"[schema] {table}: Index {index_name} angelegt.")
 
 
+def ensure_share_tables(cursor):
+    """Freigaben sind nur Verweise auf vorhandene Dateien, keine Kopien."""
+    if not table_exists(cursor, "shares"):
+        cursor.execute(
+            """
+            CREATE TABLE shares (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                owner_id INT UNSIGNED NOT NULL,
+                kind ENUM('folder', 'items') NOT NULL,
+                folder VARCHAR(64) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (owner_id)
+                    REFERENCES users(id)
+                    ON DELETE CASCADE,
+                INDEX idx_shares_owner_created (owner_id, created_at),
+                INDEX idx_shares_owner_folder (owner_id, kind, folder)
+            )
+            """
+        )
+        print("[schema] Tabelle shares angelegt.")
+
+    if not table_exists(cursor, "share_recipients"):
+        cursor.execute(
+            """
+            CREATE TABLE share_recipients (
+                share_id BIGINT UNSIGNED NOT NULL,
+                user_id INT UNSIGNED NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (share_id, user_id),
+                FOREIGN KEY (share_id)
+                    REFERENCES shares(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (user_id)
+                    REFERENCES users(id)
+                    ON DELETE CASCADE,
+                INDEX idx_share_recipients_user (user_id)
+            )
+            """
+        )
+        print("[schema] Tabelle share_recipients angelegt.")
+
+    if not table_exists(cursor, "share_items"):
+        cursor.execute(
+            """
+            CREATE TABLE share_items (
+                share_id BIGINT UNSIGNED NOT NULL,
+                media_type ENUM('photo', 'video') NOT NULL,
+                media_id BIGINT UNSIGNED NOT NULL,
+                PRIMARY KEY (share_id, media_type, media_id),
+                FOREIGN KEY (share_id)
+                    REFERENCES shares(id)
+                    ON DELETE CASCADE,
+                INDEX idx_share_items_media (media_type, media_id)
+            )
+            """
+        )
+        print("[schema] Tabelle share_items angelegt.")
+
+
 def apply_migrations(connection):
     with connection.cursor() as cursor:
         ensure_session_expiry_index(cursor)
         for table in MEDIA_TABLES:
             ensure_folder_column(cursor, table)
+        ensure_share_tables(cursor)
     connection.commit()
 
 

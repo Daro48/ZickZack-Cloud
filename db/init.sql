@@ -69,3 +69,41 @@ CREATE TABLE videos (
     INDEX idx_videos_user_folder_created (user_id, folder, created_at),
     UNIQUE KEY uq_videos_user_stored_name (user_id, stored_name)
 );
+
+CREATE TABLE shares (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    owner_id INT UNSIGNED NOT NULL,
+    kind ENUM('folder', 'items') NOT NULL,
+    folder VARCHAR(64) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (owner_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+    INDEX idx_shares_owner_created (owner_id, created_at),
+    INDEX idx_shares_owner_folder (owner_id, kind, folder)
+);
+
+CREATE TABLE share_recipients (
+    share_id BIGINT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (share_id, user_id),
+    FOREIGN KEY (share_id)
+        REFERENCES shares(id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+    INDEX idx_share_recipients_user (user_id)
+);
+
+CREATE TABLE share_items (
+    share_id BIGINT UNSIGNED NOT NULL,
+    media_type ENUM('photo', 'video') NOT NULL,
+    media_id BIGINT UNSIGNED NOT NULL,
+    PRIMARY KEY (share_id, media_type, media_id),
+    FOREIGN KEY (share_id)
+        REFERENCES shares(id)
+        ON DELETE CASCADE,
+    INDEX idx_share_items_media (media_type, media_id)
+);
