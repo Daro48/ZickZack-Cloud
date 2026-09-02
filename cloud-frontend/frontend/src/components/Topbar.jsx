@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { fetchNotifications, markNotificationsRead } from '../services/communityApi.js'
+import {
+  deleteNotification,
+  fetchNotifications,
+  markNotificationsRead,
+} from '../services/communityApi.js'
 import { fetchStorage } from '../services/mediaApi.js'
 import { formatBytes } from '../utils/format.js'
 import { applyTheme, getStoredTheme, toggleTheme } from '../utils/theme.js'
@@ -16,6 +20,7 @@ export function Topbar({
   const [notifications, setNotifications] = useState([])
   const [unread, setUnread] = useState(0)
   const [inboxOpen, setInboxOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
   const inboxRef = useRef(null)
 
   const logo = (
@@ -112,6 +117,26 @@ export function Topbar({
   const percent =
     quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0
 
+  async function handleDeleteNotification(entry) {
+    if (!entry?.id || deletingId) {
+      return
+    }
+    setDeletingId(entry.id)
+    try {
+      await deleteNotification(entry.id)
+      setNotifications((current) =>
+        current.filter((item) => item.id !== entry.id),
+      )
+      if (!entry.read) {
+        setUnread((current) => Math.max(0, current - 1))
+      }
+    } catch {
+      // keep the item; the next inbox refresh restores server state
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   async function openInbox() {
     const nextOpen = !inboxOpen
     setInboxOpen(nextOpen)
@@ -188,17 +213,27 @@ export function Topbar({
                   <p className="notify-empty">Keine Benachrichtigungen.</p>
                 ) : (
                   notifications.map((entry) => (
-                    <button
-                      className={`notify-item${entry.read ? '' : ' is-unread'}`}
-                      key={entry.id}
-                      onClick={() => {
-                        setInboxOpen(false)
-                        onGoCommunity?.()
-                      }}
-                      type="button"
-                    >
-                      {entry.message}
-                    </button>
+                    <div className="notify-row" key={entry.id}>
+                      <button
+                        className={`notify-item${entry.read ? '' : ' is-unread'}`}
+                        onClick={() => {
+                          setInboxOpen(false)
+                          onGoCommunity?.()
+                        }}
+                        type="button"
+                      >
+                        {entry.message}
+                      </button>
+                      <button
+                        aria-label="Mitteilung löschen"
+                        className="notify-dismiss"
+                        disabled={deletingId === entry.id}
+                        onClick={() => handleDeleteNotification(entry)}
+                        type="button"
+                      >
+                        ×
+                      </button>
+                    </div>
                   ))
                 )}
               </div>

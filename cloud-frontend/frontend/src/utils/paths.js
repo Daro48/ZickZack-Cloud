@@ -6,7 +6,6 @@ export const PAGE_TITLES = {
   home: 'Upload',
   content: 'Inhalte',
   community: 'Community',
-  'public-share': 'Freigabe',
 }
 
 const PATH_BY_PAGE = {
@@ -28,18 +27,12 @@ export const AUTH_PAGES = new Set([
 
 export const APP_PAGES = new Set(['home', 'content', 'community'])
 
-export function pathForPage(page, token) {
-  if (page === 'public-share') {
-    return token ? `/s/${token}` : '/'
-  }
+export function pathForPage(page) {
   return PATH_BY_PAGE[page] || '/login'
 }
 
 export function parseLocation(pathname) {
   const path = String(pathname || '/').replace(/\/+$/, '') || '/'
-  if (path.startsWith('/s/')) {
-    return { page: 'public-share', token: path.slice(3).split('/')[0] || '' }
-  }
   switch (path) {
     case '/register':
       return { page: 'register' }

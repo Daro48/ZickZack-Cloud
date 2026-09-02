@@ -4,6 +4,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog.jsx'
 import { FolderPicker } from '../components/FolderPicker.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
 import { MediaViewer } from '../components/MediaViewer.jsx'
+import { SelectMenu } from '../components/SelectMenu.jsx'
 import { SelectionPopup } from '../components/SelectionPopup.jsx'
 import { ShareDialog } from '../components/ShareDialog.jsx'
 import { Topbar } from '../components/Topbar.jsx'
@@ -14,10 +15,21 @@ import {
   fetchFolderMedia,
   renameFolder,
 } from '../services/mediaApi.js'
-import { absoluteUrl, copyText } from '../utils/format.js'
 
 const FOLDER_PAGE_SIZE = 200
 const PREFETCH_MARGIN = '800px 0px'
+
+const TYPE_OPTIONS = [
+  { value: 'all', label: 'Alle' },
+  { value: 'photo', label: 'Fotos' },
+  { value: 'video', label: 'Videos' },
+]
+
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Neueste' },
+  { value: 'oldest', label: 'Älteste' },
+  { value: 'name', label: 'Name' },
+]
 
 export function ViewContent({
   username,
@@ -158,23 +170,14 @@ export function ViewContent({
     })
   }
 
-  async function handleShared(data) {
-    const shares = data?.shares || (data?.share ? [data.share] : [])
-    const link = shares.find((entry) => entry.public_link)?.public_link
+  function handleShared() {
     setShareTarget(null)
     setSelectedKeys(new Set())
-    let message =
+    setShareNotice(
       shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
         ? 'Ordner geteilt.'
-        : `${selectedItems.length === 1 ? '1 Datei' : `${selectedItems.length} Dateien`} geteilt.`
-    if (link?.url) {
-      const url = absoluteUrl(link.url)
-      const copied = await copyText(url)
-      message += copied
-        ? ` Öffentlicher Link kopiert.`
-        : ` Öffentlicher Link: ${url}`
-    }
-    setShareNotice(message)
+        : `${selectedItems.length === 1 ? '1 Datei' : `${selectedItems.length} Dateien`} geteilt.`,
+    )
   }
 
   function selectAllVisible() {
@@ -339,7 +342,7 @@ export function ViewContent({
 
         {selectedFolder && (
           <section className="media-toolbar" aria-label="Ordner und Filter">
-            <div className="media-toolbar-row">
+            <div className="media-toolbar-row is-actions">
               <button
                 className="ghost-button"
                 disabled={isBusy}
@@ -366,7 +369,7 @@ export function ViewContent({
                 Ganzen Ordner teilen
               </button>
             </div>
-            <div className="media-toolbar-row">
+            <div className="media-toolbar-row is-filters">
               <label className="folder-field media-search">
                 <span className="folder-field-label">Suche</span>
                 <input
@@ -376,30 +379,20 @@ export function ViewContent({
                   value={query}
                 />
               </label>
-              <label className="folder-field">
-                <span className="folder-field-label">Typ</span>
-                <select
-                  className="folder-select-trigger"
-                  onChange={(event) => setTypeFilter(event.target.value)}
-                  value={typeFilter}
-                >
-                  <option value="all">Alle</option>
-                  <option value="photo">Fotos</option>
-                  <option value="video">Videos</option>
-                </select>
-              </label>
-              <label className="folder-field">
-                <span className="folder-field-label">Sortierung</span>
-                <select
-                  className="folder-select-trigger"
-                  onChange={(event) => setSort(event.target.value)}
-                  value={sort}
-                >
-                  <option value="newest">Neueste</option>
-                  <option value="oldest">Älteste</option>
-                  <option value="name">Name</option>
-                </select>
-              </label>
+              <SelectMenu
+                accent
+                label="Typ"
+                onChange={setTypeFilter}
+                options={TYPE_OPTIONS}
+                value={typeFilter}
+              />
+              <SelectMenu
+                accent
+                label="Sortierung"
+                onChange={setSort}
+                options={SORT_OPTIONS}
+                value={sort}
+              />
             </div>
           </section>
         )}

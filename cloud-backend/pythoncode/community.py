@@ -1,5 +1,3 @@
-import secrets
-from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request
 from database import get_database_connection
 from media import (
@@ -59,15 +57,12 @@ def user_can_access_shared_media(
               AND shares.owner_id = %s
               AND (
                 (shares.kind = 'folder' AND shares.folder = %s)
-                OR (
-                    shares.kind = 'items'
-                    AND EXISTS (
-                        SELECT 1
-                        FROM share_items
-                        WHERE share_items.share_id = shares.id
-                          AND share_items.media_type = %s
-                          AND share_items.media_id = %s
-                    )
+                OR EXISTS (
+                    SELECT 1
+                    FROM share_items
+                    WHERE share_items.share_id = shares.id
+                      AND share_items.media_type = %s
+                      AND share_items.media_id = %s
                 )
               )
             LIMIT 1
@@ -207,56 +202,8 @@ def parse_note(value):
     return note
 
 
-def parse_public_days(value):
-    try:
-        days = int(value)
-    except (TypeError, ValueError):
-        return None
-    if days in {1, 7, 30}:
-        return days
-    return None
-
-
 def public_url_for(token):
     return f"/s/{token}"
-
-
-def load_active_link(cursor, share_id):
-    cursor.execute(
-        """
-        SELECT token, expires_at
-        FROM share_links
-        WHERE share_id = %s AND expires_at > UTC_TIMESTAMP()
-        ORDER BY expires_at DESC
-        LIMIT 1
-        """,
-        (share_id,),
-    )
-    return cursor.fetchone()
-
-
-def insert_share_link(cursor, share_id, days):
-    token = secrets.token_hex(16)
-    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=days)
-    cursor.execute(
-        """
-        INSERT INTO share_links (share_id, token, expires_at)
-        VALUES (%s, %s, %s)
-        """,
-        (share_id, token, expires_at),
-    )
-    return {"token": token, "expires_at": expires_at, "url": public_url_for(token)}
-
-
-def serialize_link(row):
-    if not row:
-        return None
-    expires_at = row["expires_at"]
-    return {
-        "token": row["token"],
-        "url": public_url_for(row["token"]),
-        "expires_at": format_created_at(expires_at),
-    }
 
 
 def notify_recipients(cursor, share, recipient_ids):
@@ -264,7 +211,7 @@ def notify_recipients(cursor, share, recipient_ids):
         return
     owner_name = share["owner_username"]
     if share["kind"] == "folder" and share["folder"]:
-        message = f"{owner_name} hat den Ordner „{share['folder']}“ mit dir geteilt."
+        message = f'{owner_name} hat den Ordner "{share["folder"]}" mit dir geteilt.'
     else:
         message = f"{owner_name} hat Dateien mit dir geteilt."
     if len(message) > 255:
@@ -278,13 +225,56 @@ def notify_recipients(cursor, share, recipient_ids):
     )
 
 
+def list_owned_folder_media(cursor, owner_id, folder_name):
+    """Aktuelle Dateien im Ordner, damit Empfänger dieselben Treffer sehen wie beim Foto-Teilen."""
+    cursor.execute(
+        """
+        SELECT id
+        FROM photos
+        WHERE user_id = %s AND folder = %s
+        ORDER BY created_at DESC, id DESC
+        LIMIT %s
+        """,
+        (owner_id, folder_name, MAX_SHARE_ITEMS),
+    )
+    owned = [("photo", row["id"]) for row in cursor.fetchall()]
+    remaining = MAX_SHARE_ITEMS - len(owned)
+    if remaining < 1:
+        return owned
+    cursor.execute(
+        """
+        SELECT id
+        FROM videos
+        WHERE user_id = %s AND folder = %s
+        ORDER BY created_at DESC, id DESC
+        LIMIT %s
+        """,
+        (owner_id, folder_name, remaining),
+    )
+    owned.extend(("video", row["id"]) for row in cursor.fetchall())
+    return owned
+
+
+def load_folder_share_page(cursor, share, owner_id, offset, limit):
+    rows, has_more = fetch_folder_page(
+        cursor, owner_id, share["folder"], offset, limit
+    )
+    total = count_folder_items(cursor, owner_id, share["folder"])
+    if total > 0 or offset > 0:
+        return rows, has_more, total
+    rows, has_more = fetch_share_items_page(
+        cursor, share["id"], owner_id, offset, limit
+    )
+    total = count_share_items(cursor, share["id"])
+    return rows, has_more, total
+
+
 def hydrate_share(cursor, share, viewer_id):
     recipients = load_recipients(cursor, share["id"])
     owner_id = share["owner_id"]
     if share["kind"] == "folder":
-        item_count = count_folder_items(cursor, owner_id, share["folder"])
-        preview_rows, _ = fetch_folder_page(
-            cursor, owner_id, share["folder"], 0, PREVIEW_LIMIT
+        preview_rows, _, item_count = load_folder_share_page(
+            cursor, share, owner_id, 0, PREVIEW_LIMIT
         )
     else:
         item_count = count_share_items(cursor, share["id"])
@@ -308,11 +298,29 @@ def hydrate_share(cursor, share, viewer_id):
         "preview": serialize_and_prime(preview_rows, owner_id),
         "mine": owner_id == viewer_id,
         "created_at": format_created_at(share["created_at"]),
-        "public_link": None,
     }
-    if owner_id == viewer_id:
-        payload["public_link"] = serialize_link(load_active_link(cursor, share["id"]))
     return payload
+
+
+def safe_hydrate_share(cursor, share, viewer_id):
+    try:
+        return hydrate_share(cursor, share, viewer_id)
+    except Exception:
+        return {
+            "id": share["id"],
+            "kind": share["kind"],
+            "folder": share["folder"],
+            "note": share.get("note"),
+            "owner": {
+                "id": share["owner_id"],
+                "username": share["owner_username"],
+            },
+            "recipients": [],
+            "item_count": 0,
+            "preview": [],
+            "mine": share["owner_id"] == viewer_id,
+            "created_at": format_created_at(share["created_at"]),
+        }
 
 
 def parse_recipient_ids(cursor, owner_id, data):
@@ -326,7 +334,7 @@ def parse_recipient_ids(cursor, owner_id, data):
         (owner_id,),
     )
     others = [row["id"] for row in cursor.fetchall()]
-    if data.get("all"):
+    if data.get("all") is True:
         return others
 
     wanted = set()
@@ -395,13 +403,24 @@ def parse_owned_items(cursor, owner_id, raw_items):
 
 
 def insert_recipients(cursor, share_id, recipient_ids):
-    cursor.executemany(
-        """
-        INSERT IGNORE INTO share_recipients (share_id, user_id)
-        VALUES (%s, %s)
+    if not recipient_ids:
+        return
+    placeholders = ", ".join(["(%s, %s)"] * len(recipient_ids))
+    params = []
+    for user_id in recipient_ids:
+        params.extend((int(share_id), int(user_id)))
+    cursor.execute(
+        f"""
+        INSERT INTO share_recipients (share_id, user_id)
+        VALUES {placeholders}
         """,
-        [(share_id, user_id) for user_id in recipient_ids],
+        params,
     )
+
+
+def recipients_saved(cursor, share_id, recipient_ids):
+    saved = {row["id"] for row in load_recipients(cursor, share_id)}
+    return saved == set(recipient_ids)
 
 
 @community_bp.get("/bp/community/users")
@@ -474,10 +493,10 @@ def list_community():
             outgoing_rows = cursor.fetchall()
 
             incoming = [
-                hydrate_share(cursor, row, user["id"]) for row in incoming_rows
+                safe_hydrate_share(cursor, row, user["id"]) for row in incoming_rows
             ]
             outgoing = [
-                hydrate_share(cursor, row, user["id"]) for row in outgoing_rows
+                safe_hydrate_share(cursor, row, user["id"]) for row in outgoing_rows
             ]
 
         return jsonify(
@@ -508,7 +527,6 @@ def create_share():
             )
 
         note = parse_note(data.get("note"))
-        public_days = parse_public_days(data.get("public_days"))
 
         with connection.cursor() as cursor:
             recipient_ids = parse_recipient_ids(cursor, user["id"], data)
@@ -526,8 +544,8 @@ def create_share():
             created_ids = []
             if kind in {"folder", "folders"}:
                 folder_names = []
-                raw_folders = data.get("folders") if kind == "folders" else None
-                if raw_folders:
+                raw_folders = data.get("folders")
+                if isinstance(raw_folders, list) and raw_folders:
                     for raw_name in raw_folders:
                         folder_name = sanitize_folder_name(raw_name)
                         if folder_name and folder_name not in folder_names:
@@ -560,12 +578,16 @@ def create_share():
 
                 existing_folders = set(list_user_folders(user["username"]))
                 for folder_name in folder_names:
-                    if folder_name not in existing_folders:
+                    folder_on_disk = folder_name in existing_folders
+                    folder_media = list_owned_folder_media(
+                        cursor, user["id"], folder_name
+                    )
+                    if not folder_on_disk and not folder_media:
                         return (
                             jsonify(
                                 {
                                     "status": "error",
-                                    "message": f'Der Ordner „{folder_name}“ existiert nicht.',
+                                    "message": f'Der Ordner "{folder_name}" existiert nicht.',
                                 }
                             ),
                             400,
@@ -573,40 +595,45 @@ def create_share():
 
                     cursor.execute(
                         """
-                        SELECT id
-                        FROM shares
-                        WHERE owner_id = %s AND kind = 'folder' AND folder = %s
+                        INSERT INTO shares (owner_id, kind, folder, note)
+                        VALUES (%s, 'folder', %s, %s)
                         """,
-                        (user["id"], folder_name),
+                        (user["id"], folder_name, note),
                     )
-                    existing = cursor.fetchone()
-                    already = set()
-                    if existing:
-                        share_id = existing["id"]
-                        already = {
-                            row["id"] for row in load_recipients(cursor, share_id)
-                        }
-                        if note is not None:
-                            cursor.execute(
-                                "UPDATE shares SET note = %s WHERE id = %s",
-                                (note, share_id),
-                            )
-                    else:
-                        cursor.execute(
-                            """
-                            INSERT INTO shares (owner_id, kind, folder, note)
-                            VALUES (%s, 'folder', %s, %s)
-                            """,
-                            (user["id"], folder_name, note),
+                    share_id = cursor.lastrowid
+                    if not share_id:
+                        return (
+                            jsonify(
+                                {
+                                    "status": "error",
+                                    "message": "Freigabe konnte nicht erstellt werden.",
+                                }
+                            ),
+                            500,
                         )
-                        share_id = cursor.lastrowid
                     insert_recipients(cursor, share_id, recipient_ids)
-                    created_ids.append(
-                        (
-                            share_id,
-                            [user_id for user_id in recipient_ids if user_id not in already],
+                    if not recipients_saved(cursor, share_id, recipient_ids):
+                        return (
+                            jsonify(
+                                {
+                                    "status": "error",
+                                    "message": "Empfänger konnten nicht gespeichert werden.",
+                                }
+                            ),
+                            500,
                         )
-                    )
+                    if folder_media:
+                        cursor.executemany(
+                            """
+                            INSERT INTO share_items (share_id, media_type, media_id)
+                            VALUES (%s, %s, %s)
+                            """,
+                            [
+                                (share_id, media_type, media_id)
+                                for media_type, media_id in folder_media
+                            ],
+                        )
+                    created_ids.append((share_id, recipient_ids))
             else:
                 owned, error_message = parse_owned_items(
                     cursor, user["id"], data.get("items")
@@ -633,17 +660,77 @@ def create_share():
                     ],
                 )
                 insert_recipients(cursor, share_id, recipient_ids)
+                if not recipients_saved(cursor, share_id, recipient_ids):
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "message": "Empfänger konnten nicht gespeichert werden.",
+                            }
+                        ),
+                        500,
+                    )
                 created_ids.append((share_id, recipient_ids))
 
-            payloads = []
+            notified = []
             for share_id, notified_ids in created_ids:
                 share = load_share_row(cursor, share_id)
-                if public_days:
-                    insert_share_link(cursor, share_id, public_days)
+                if not share:
+                    continue
                 notify_recipients(cursor, share, notified_ids)
-                payloads.append(hydrate_share(cursor, share, user["id"]))
+                notified.append(share_id)
+
+            if not notified:
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Freigabe konnte nicht erstellt werden.",
+                        }
+                    ),
+                    500,
+                )
 
         connection.commit()
+
+        payloads = []
+        with connection.cursor() as cursor:
+            for share_id in notified:
+                share = load_share_row(cursor, share_id)
+                if not share:
+                    continue
+                try:
+                    payloads.append(hydrate_share(cursor, share, user["id"]))
+                except Exception:
+                    payloads.append(
+                        {
+                            "id": share["id"],
+                            "kind": share["kind"],
+                            "folder": share["folder"],
+                            "note": share.get("note"),
+                            "owner": {
+                                "id": share["owner_id"],
+                                "username": share["owner_username"],
+                            },
+                            "recipients": [],
+                            "item_count": 0,
+                            "preview": [],
+                            "mine": True,
+                            "created_at": format_created_at(share["created_at"]),
+                        }
+                    )
+
+        if not payloads:
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Freigabe konnte nicht erstellt werden.",
+                    }
+                ),
+                500,
+            )
+
         return jsonify(
             {
                 "status": "ok",
@@ -679,10 +766,9 @@ def list_share_media(share_id):
 
             owner_id = share["owner_id"]
             if share["kind"] == "folder":
-                rows, has_more = fetch_folder_page(
-                    cursor, owner_id, share["folder"], offset, limit
+                rows, has_more, total = load_folder_share_page(
+                    cursor, share, owner_id, offset, limit
                 )
-                total = count_folder_items(cursor, owner_id, share["folder"])
             else:
                 rows, has_more = fetch_share_items_page(
                     cursor, share_id, owner_id, offset, limit
@@ -758,42 +844,6 @@ def leave_share(share_id):
         connection.close()
 
 
-@community_bp.post("/bp/community/shares/<int:share_id>/link")
-def create_share_link(share_id):
-    data = request.get_json(silent=True) or {}
-    days = parse_public_days(data.get("days") or data.get("public_days")) or 7
-
-    connection = get_database_connection()
-    try:
-        user = require_user(connection)
-        if not user:
-            return jsonify({"status": "error", "message": "Not authenticated"}), 401
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT id FROM shares WHERE id = %s AND owner_id = %s",
-                (share_id, user["id"]),
-            )
-            if not cursor.fetchone():
-                return jsonify({"status": "error", "message": "Nicht gefunden."}), 404
-            link = insert_share_link(cursor, share_id, days)
-
-        connection.commit()
-        return jsonify(
-            {
-                "status": "ok",
-                "public_link": {
-                    "token": link["token"],
-                    "url": link["url"],
-                    "expires_at": format_created_at(link["expires_at"]),
-                    "days": days,
-                },
-            }
-        )
-    finally:
-        connection.close()
-
-
 @community_bp.get("/bp/community/notifications")
 def list_notifications():
     connection = get_database_connection()
@@ -861,6 +911,31 @@ def mark_notifications_read():
                 """,
                 (user["id"],),
             )
+
+        connection.commit()
+        return jsonify({"status": "ok"})
+    finally:
+        connection.close()
+
+
+@community_bp.delete("/bp/community/notifications/<int:notification_id>")
+def delete_notification(notification_id):
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM notifications
+                WHERE id = %s AND user_id = %s
+                """,
+                (notification_id, user["id"]),
+            )
+            if cursor.rowcount < 1:
+                return jsonify({"status": "error", "message": "Nicht gefunden."}), 404
 
         connection.commit()
         return jsonify({"status": "ok"})

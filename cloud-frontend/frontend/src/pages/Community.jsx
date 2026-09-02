@@ -8,7 +8,6 @@ import { SelectionPopup } from '../components/SelectionPopup.jsx'
 import { ShareDialog } from '../components/ShareDialog.jsx'
 import { Topbar } from '../components/Topbar.jsx'
 import {
-  createShareLink,
   deleteShare,
   fetchCommunity,
   fetchShareMedia,
@@ -16,7 +15,6 @@ import {
   mediaKey,
 } from '../services/communityApi.js'
 import { fetchFolderMedia } from '../services/mediaApi.js'
-import { absoluteUrl, copyText } from '../utils/format.js'
 
 const PAGE_SIZE = 200
 const PREFETCH_MARGIN = '800px 0px'
@@ -32,7 +30,7 @@ function recipientLabel(share) {
   return `${names.slice(0, 2).join(', ')} +${names.length - 2}`
 }
 
-function ShareCard({ share, onOpen, onDelete, onLeave, onCopyLink, isDeleting, isLeaving }) {
+function ShareCard({ share, onOpen, onDelete, onLeave, isDeleting, isLeaving }) {
   const preview = share.preview || []
   const title =
     share.kind === 'folder' ? share.folder : `${share.item_count} Datei(en)`
@@ -72,13 +70,6 @@ function ShareCard({ share, onOpen, onDelete, onLeave, onCopyLink, isDeleting, i
       </button>
       {share.mine && (
         <div className="share-card-actions">
-          <button
-            className="ghost-button"
-            onClick={onCopyLink}
-            type="button"
-          >
-            {share.public_link ? 'Link kopieren' : 'Öffentlicher Link'}
-          </button>
           <button
             className="ghost-button share-delete"
             disabled={isDeleting}
@@ -477,34 +468,6 @@ export function Community({
     }
   }
 
-  async function handlePublicLink(share) {
-    if (share.public_link?.url) {
-      const full = absoluteUrl(share.public_link.url)
-      const copied = await copyText(full)
-      setNotice(copied ? 'Öffentlicher Link kopiert.' : full)
-      return
-    }
-    setDialog({ type: 'public-link', share })
-  }
-
-  async function executePublicLink(share) {
-    setFeedError('')
-    try {
-      const data = await createShareLink(share.id, 7)
-      const full = absoluteUrl(data.public_link?.url)
-      const copied = await copyText(full)
-      setNotice(
-        copied
-          ? 'Öffentlicher Link erstellt und kopiert. Er gilt 7 Tage.'
-          : full,
-      )
-      setDialog(null)
-      await reloadFeed()
-    } catch (error) {
-      setFeedError(error.message)
-    }
-  }
-
   function handleShared(data) {
     const shares = data?.shares || (data?.share ? [data.share] : [])
     const count = shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
@@ -512,18 +475,13 @@ export function Community({
       : selectedItems.length
     setShareTarget(null)
     setSelectedKeys(new Set())
-    const link = shares.find((entry) => entry.public_link)?.public_link
-    let message =
+    setNotice(
       shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
         ? count > 1
           ? `${count} Ordner geteilt, ohne sie extra zu speichern.`
           : `Ordner geteilt, ohne ihn extra zu speichern.`
-        : `${count === 1 ? '1 Datei' : `${count} Dateien`} geteilt, ohne sie extra zu speichern.`
-    if (link?.url) {
-      message += ` Link: ${absoluteUrl(link.url)}`
-      copyText(absoluteUrl(link.url))
-    }
-    setNotice(message)
+        : `${count === 1 ? '1 Datei' : `${count} Dateien`} geteilt, ohne sie extra zu speichern.`,
+    )
     reloadFeed()
   }
 
@@ -687,7 +645,6 @@ export function Community({
                         <ShareCard
                           isDeleting={deletingId === share.id}
                           key={share.id}
-                          onCopyLink={() => handlePublicLink(share)}
                           onDelete={() => handleDeleteShare(share)}
                           onOpen={() => openShare(share)}
                           share={share}
@@ -867,17 +824,6 @@ export function Community({
           onCancel={closeDialog}
           onConfirm={() => executeLeaveShare(dialog.share)}
           title="Freigabe verlassen"
-        />
-      )}
-
-      {dialog?.type === 'public-link' && (
-        <ConfirmDialog
-          confirmLabel="Link für 7 Tage erstellen"
-          description="Jeder mit dem Link kann die Freigabe ohne Konto sehen, bis sie nach 7 Tagen abläuft."
-          error={feedError}
-          onCancel={closeDialog}
-          onConfirm={() => executePublicLink(dialog.share)}
-          title="Öffentlichen Link erstellen"
         />
       )}
     </div>

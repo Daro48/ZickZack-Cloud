@@ -8,7 +8,6 @@ import { LoginPage } from './pages/LoginPage.jsx'
 import { RecoveryCodePage } from './pages/RecoveryCodePage.jsx'
 import { RegisterPage } from './pages/RegisterPage.jsx'
 import { ResetPasswordPage } from './pages/ResetPasswordPage.jsx'
-import { PublicSharePage } from './pages/PublicSharePage.jsx'
 import {
   getCurrentUser,
   loginUser,
@@ -32,7 +31,6 @@ function App() {
   const [page, setPage] = useState(
     initialLocation.page === 'unknown' ? 'login' : initialLocation.page,
   )
-  const [publicToken, setPublicToken] = useState(initialLocation.token || '')
   const [user, setUser] = useState(null)
   const [authError, setAuthError] = useState('')
   const [authNotice, setAuthNotice] = useState('')
@@ -45,29 +43,25 @@ function App() {
     community: initialLocation.page === 'community',
   })
 
-  function syncHistory(nextPage, { replace = false, token = '' } = {}) {
-    const path = pathForPage(nextPage, token)
+  function syncHistory(nextPage, { replace = false } = {}) {
+    const path = pathForPage(nextPage)
     const current = `${window.location.pathname}`
     if (current === path) {
       return
     }
     if (replace) {
-      window.history.replaceState({ page: nextPage, token }, '', path)
+      window.history.replaceState({ page: nextPage }, '', path)
     } else {
-      window.history.pushState({ page: nextPage, token }, '', path)
+      window.history.pushState({ page: nextPage }, '', path)
     }
   }
 
   function openPage(nextPage, options = {}) {
-    const token = options.token || ''
     setSeenPages((current) =>
       nextPage in current ? { ...current, [nextPage]: true } : current,
     )
     setPage(nextPage)
-    if (nextPage === 'public-share') {
-      setPublicToken(token)
-    }
-    syncHistory(nextPage, { replace: options.replace, token })
+    syncHistory(nextPage, { replace: options.replace })
   }
 
   useEffect(() => {
@@ -80,7 +74,6 @@ function App() {
         next.page in current ? { ...current, [next.page]: true } : current,
       )
       setPage(next.page)
-      setPublicToken(next.token || '')
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -98,10 +91,7 @@ function App() {
         }
         setUser(data.user)
         const current = parseLocation(window.location.pathname)
-        if (current.page === 'public-share') {
-          setPage('public-share')
-          setPublicToken(current.token || '')
-        } else if (current.page === 'recovery-code' && recoveryCode) {
+        if (current.page === 'recovery-code' && recoveryCode) {
           setPage('recovery-code')
         } else if (APP_PAGES.has(current.page)) {
           setSeenPages((seen) =>
@@ -118,10 +108,7 @@ function App() {
         }
         setUser(null)
         const current = parseLocation(window.location.pathname)
-        if (current.page === 'public-share') {
-          setPage('public-share')
-          setPublicToken(current.token || '')
-        } else if (AUTH_PAGES.has(current.page) && current.page !== 'recovery-code') {
+        if (AUTH_PAGES.has(current.page) && current.page !== 'recovery-code') {
           setPage(current.page)
           syncHistory(current.page, { replace: true })
         } else {
@@ -235,15 +222,6 @@ function App() {
           <p className="auth-copy">Deine Sitzung wird geprüft.</p>
         </section>
       </AuthLayout>
-    )
-  }
-
-  if (page === 'public-share' && publicToken) {
-    return (
-      <PublicSharePage
-        token={publicToken}
-        onGoLogin={user ? () => openPage('home') : showLogin}
-      />
     )
   }
 

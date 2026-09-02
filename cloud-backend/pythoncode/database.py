@@ -20,6 +20,7 @@ def open_raw_connection():
         user=os.environ["DB_USER"],
         password=os.environ["DB_PASSWORD"],
         database=os.environ["DB_NAME"],
+        charset="utf8mb4",
         cursorclass=pymysql.cursors.DictCursor,
     )
 

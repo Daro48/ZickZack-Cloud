@@ -16,7 +16,6 @@ export function ShareDialog({
   const [availableFolders, setAvailableFolders] = useState(folders)
   const [selectedFolders, setSelectedFolders] = useState(() => new Set(folders.length ? folders : folder ? [folder] : []))
   const [note, setNote] = useState('')
-  const [publicDays, setPublicDays] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
@@ -47,7 +46,14 @@ export function ShareDialog({
         if (cancelled) {
           return
         }
-        setUsers(userData.users || [])
+        setUsers(
+          (userData.users || [])
+            .map((entry) => ({
+              ...entry,
+              id: Number(entry.id),
+            }))
+            .filter((entry) => Number.isInteger(entry.id) && entry.id > 0),
+        )
         if (isFolderShare) {
           const nextFolders = folderData.folders || []
           setAvailableFolders(nextFolders)
@@ -99,12 +105,16 @@ export function ShareDialog({
   }, [isFolderShare])
 
   function toggleUser(userId) {
+    const id = Number(userId)
+    if (!Number.isInteger(id) || id < 1) {
+      return
+    }
     setSelectedIds((current) => {
       const next = new Set(current)
-      if (next.has(userId)) {
-        next.delete(userId)
+      if (next.has(id)) {
+        next.delete(id)
       } else {
-        next.add(userId)
+        next.add(id)
       }
       return next
     })
@@ -115,13 +125,25 @@ export function ShareDialog({
       setSelectedIds(new Set())
       return
     }
-    setSelectedIds(new Set(users.map((entry) => entry.id)))
+    setSelectedIds(
+      new Set(
+        users
+          .map((entry) => Number(entry.id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    )
   }
 
   function toggleFolder(name) {
+    if (kind === 'folder') {
+      return
+    }
     setSelectedFolders((current) => {
       const next = new Set(current)
       if (next.has(name)) {
+        if (next.size === 1) {
+          return current
+        }
         next.delete(name)
       } else {
         next.add(name)
@@ -132,10 +154,11 @@ export function ShareDialog({
 
   async function handleSubmit(event) {
     event.preventDefault()
+    const targetFolder = folder || [...selectedFolders][0]
     if (isSaving || selectedCount === 0) {
       return
     }
-    if (isFolderShare && selectedFolders.size === 0) {
+    if (isFolderShare && !targetFolder && selectedFolders.size === 0) {
       setError('Bitte mindestens einen Ordner wählen.')
       return
     }
@@ -143,26 +166,43 @@ export function ShareDialog({
     setIsSaving(true)
     setError('')
     try {
-      const chosenFolders = [...selectedFolders]
+      const chosenFolders =
+        kind === 'folder' && targetFolder
+          ? [targetFolder]
+          : [...selectedFolders]
+      const recipientIds = [...selectedIds]
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+      if (recipientIds.length === 0) {
+        setError('Bitte mindestens einen User wählen.')
+        setIsSaving(false)
+        return
+      }
       const payload = isFolderShare
         ? {
             kind: chosenFolders.length > 1 ? 'folders' : 'folder',
             folder: chosenFolders[0],
             folders: chosenFolders,
-            all: allSelected,
-            user_ids: [...selectedIds],
+            user_ids: recipientIds,
             note: note.trim(),
-            public_days: publicDays ? Number(publicDays) : undefined,
           }
         : {
             kind: 'items',
             items: items.map((item) => ({ type: item.type, id: item.id })),
-            all: allSelected,
-            user_ids: [...selectedIds],
+            user_ids: recipientIds,
             note: note.trim(),
-            public_days: publicDays ? Number(publicDays) : undefined,
           }
       const data = await createShare(payload)
+      const shares = data?.shares || (data?.share ? [data.share] : [])
+      const savedRecipients = shares.reduce(
+        (total, share) => total + (share.recipients || []).length,
+        0,
+      )
+      if (shares.length === 0 || savedRecipients === 0) {
+        throw new Error(
+          'Die Freigabe wurde nicht an die Empfänger übergeben. Bitte erneut teilen.',
+        )
+      }
       onShared?.(data)
     } catch (saveError) {
       setError(saveError.message)
@@ -202,8 +242,14 @@ export function ShareDialog({
 
         <p className="share-dialog-copy">{summary}</p>
 
-        {isFolderShare && availableFolders.length > 0 && (
-          <div className="share-user-list" role="group" aria-label="Ordner wählen">
+        {kind === 'folder' && (folder || [...selectedFolders][0]) && (
+          <p className="folder-hint">
+            Ordner: {folder || [...selectedFolders][0]}
+          </p>
+        )}
+
+        {kind === 'folders' && availableFolders.length > 0 && (
+          <div className="share-user-list is-compact" role="group" aria-label="Ordner wählen">
             {availableFolders.map((entry) => {
               const isActive = selectedFolders.has(entry)
               return (
@@ -228,13 +274,21 @@ export function ShareDialog({
             <span>Teilen ist erst möglich, wenn weitere Accounts existieren.</span>
           </div>
         ) : (
-          <div className="share-user-list" role="group" aria-label="User wählen">
+          <div className="share-user-list" role="group" aria-label="Empfänger wählen">
             <button
-              className={`share-user-option${allSelected ? ' is-active' : ''}`}
+              aria-pressed={allSelected}
+              className={`share-user-option is-all${allSelected ? ' is-active' : ''}`}
               onClick={toggleAll}
               type="button"
             >
-              Alle auswählen
+              <span className="share-user-option-copy">
+                <strong>Alle auswählen</strong>
+                <em>
+                  {allSelected
+                    ? `Alle ${users.length} User gewählt`
+                    : `${users.length} User auf einmal`}
+                </em>
+              </span>
             </button>
             {users.map((entry) => {
               const isActive = selectedIds.has(entry.id)
@@ -264,21 +318,12 @@ export function ShareDialog({
           />
         </label>
 
-        <label className="folder-field">
-          <span className="folder-field-label">Öffentlicher Link</span>
-          <select
-            className="folder-select-trigger"
-            onChange={(event) => setPublicDays(event.target.value)}
-            value={publicDays}
-          >
-            <option value="">Kein öffentlicher Link</option>
-            <option value="1">1 Tag gültig</option>
-            <option value="7">7 Tage gültig</option>
-            <option value="30">30 Tage gültig</option>
-          </select>
-        </label>
-
         {error && <p className="form-error">{error}</p>}
+        {!error && !isLoading && users.length > 0 && selectedCount === 0 && (
+          <p className="folder-hint">
+            Wähle Empfänger oder Alle auswählen, dann teilen.
+          </p>
+        )}
 
         <button
           className="primary-button share-dialog-submit"
@@ -287,7 +332,8 @@ export function ShareDialog({
             isLoading ||
             selectedCount === 0 ||
             users.length === 0 ||
-            (isFolderShare && selectedFolders.size === 0)
+            (kind === 'folders' && selectedFolders.size === 0) ||
+            (kind === 'folder' && !(folder || selectedFolders.size))
           }
           type="submit"
         >
