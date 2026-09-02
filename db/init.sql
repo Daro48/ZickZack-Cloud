@@ -109,18 +109,6 @@ CREATE TABLE share_items (
     INDEX idx_share_items_media (media_type, media_id)
 );
 
-CREATE TABLE share_links (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    share_id BIGINT UNSIGNED NOT NULL,
-    token CHAR(32) NOT NULL UNIQUE,
-    expires_at DATETIME NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (share_id)
-        REFERENCES shares(id)
-        ON DELETE CASCADE,
-    INDEX idx_share_links_expires (expires_at)
-);
-
 CREATE TABLE notifications (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,

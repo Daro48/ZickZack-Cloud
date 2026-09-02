@@ -95,6 +95,14 @@ def ensure_column(cursor, table, column, definition):
     print(f"[schema] {table}: Spalte {column} angelegt.")
 
 
+def drop_share_links_table(cursor):
+    """Öffentliche Share-Links sind bewusst entfernt."""
+    if not table_exists(cursor, "share_links"):
+        return
+    cursor.execute("DROP TABLE share_links")
+    print("[schema] Tabelle share_links entfernt.")
+
+
 def ensure_share_tables(cursor):
     """Freigaben sind nur Verweise auf vorhandene Dateien, keine Kopien."""
     if not table_exists(cursor, "shares"):
@@ -156,23 +164,7 @@ def ensure_share_tables(cursor):
         )
         print("[schema] Tabelle share_items angelegt.")
 
-    if not table_exists(cursor, "share_links"):
-        cursor.execute(
-            """
-            CREATE TABLE share_links (
-                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                share_id BIGINT UNSIGNED NOT NULL,
-                token CHAR(32) NOT NULL UNIQUE,
-                expires_at DATETIME NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (share_id)
-                    REFERENCES shares(id)
-                    ON DELETE CASCADE,
-                INDEX idx_share_links_expires (expires_at)
-            )
-            """
-        )
-        print("[schema] Tabelle share_links angelegt.")
+    drop_share_links_table(cursor)
 
     if not table_exists(cursor, "notifications"):
         cursor.execute(

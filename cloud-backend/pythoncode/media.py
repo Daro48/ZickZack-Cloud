@@ -240,16 +240,12 @@ def send_thumb_entry(entry):
     return response.make_conditional(request)
 
 
-def serialize_item(row, url_prefix=None):
+def serialize_item(row):
     created_at = row["created_at"]
     media_type = row["type"]
     media_id = row["id"]
-    if url_prefix:
-        file_url = f"{url_prefix}/file/{media_type}/{media_id}"
-        thumb_url = f"{url_prefix}/thumb/{media_type}/{media_id}"
-    else:
-        file_url = f"/bp/media/file/{media_type}/{media_id}"
-        thumb_url = f"/bp/media/thumb/{media_type}/{media_id}"
+    file_url = f"/bp/media/file/{media_type}/{media_id}"
+    thumb_url = f"/bp/media/thumb/{media_type}/{media_id}"
     return {
         "id": media_id,
         "type": media_type,
@@ -265,7 +261,7 @@ def serialize_item(row, url_prefix=None):
     }
 
 
-def serialize_and_prime(rows, user_id, url_prefix=None):
+def serialize_and_prime(rows, user_id):
     """Füllt den Metadaten-Cache mit, damit die folgenden Bild-Requests der
     Galerie ohne eigene Datenbankabfrage auskommen."""
     items = []
@@ -280,7 +276,7 @@ def serialize_and_prime(rows, user_id, url_prefix=None):
                 "original_name": row["original_name"],
             },
         )
-        items.append(serialize_item(row, url_prefix=url_prefix))
+        items.append(serialize_item(row))
     return items
 
 
