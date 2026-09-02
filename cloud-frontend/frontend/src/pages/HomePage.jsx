@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { AppNav } from '../components/AppNav.jsx'
 import { FolderPicker } from '../components/FolderPicker.jsx'
 import { Topbar } from '../components/Topbar.jsx'
-import { uploadMedia } from '../services/mediaApi.js'
+import { abortActiveUploads, uploadMedia } from '../services/mediaApi.js'
 import { formatBytes } from '../utils/format.js'
 import { isAllowedMediaFile } from '../utils/mediaTypes.js'
 
@@ -32,7 +32,14 @@ function collectFilesFromDataTransfer(dataTransfer) {
   return files.filter(isAllowedMediaFile)
 }
 
-export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommunity }) {
+export function HomePage({
+  username,
+  onLogout,
+  onGoStart,
+  onGoUpload,
+  onGoContent,
+  onGoCommunity,
+}) {
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
   const [selectedFolder, setSelectedFolder] = useState('')
@@ -70,8 +77,11 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
 
     for (const item of source) {
       total += item.size
-      if (item.status === 'done' || item.status === 'error') {
+      if (item.status === 'done') {
         loaded += item.size
+        doneCount += 1
+      } else if (item.status === 'error') {
+        loaded += Math.min(item.loadedBytes || 0, item.size)
         doneCount += 1
       } else if (item.status === 'uploading') {
         loaded += Math.min(item.loadedBytes || 0, item.size)
@@ -214,8 +224,6 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
               ...item,
               status: 'pending',
               message: '',
-              progress: 0,
-              loadedBytes: 0,
             }
           : item,
       ),
@@ -229,12 +237,10 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
     try {
       const data = await uploadMedia(files, {
         folder: selectedFolder,
-        onFileStart(queueId) {
+        onFileStart(queueId, file) {
           updateItem(queueId, {
             status: 'uploading',
             message: '',
-            progress: 0,
-            loadedBytes: 0,
           })
         },
         onFileProgress(queueId, file, loaded, total) {
@@ -262,7 +268,6 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
           updateItem(queueId, {
             status: 'error',
             message,
-            progress: 0,
           })
         },
       })
@@ -299,13 +304,13 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
     <div className="app-shell">
       <Topbar
         username={username}
-        onGoHome={onGoHome}
+        onGoHome={onGoStart}
         onGoCommunity={onGoCommunity}
         center={
           <AppNav current="home" onNavigate={(page) => {
             if (page === 'content') onGoContent()
             if (page === 'community') onGoCommunity()
-            if (page === 'home') onGoHome()
+            if (page === 'home') onGoUpload()
           }} />
         }
         action={
@@ -350,7 +355,13 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
                 )}
               </div>
               {isUploading && (
-                <span className="upload-progress-live">Upload läuft…</span>
+                <button
+                  className="ghost-button"
+                  onClick={abortActiveUploads}
+                  type="button"
+                >
+                  Upload abbrechen
+                </button>
               )}
             </div>
 
@@ -497,7 +508,7 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
               onClick={retryFailed}
               type="button"
             >
-              Erneut versuchen
+              Fortsetzen
             </button>
             <button
               className="secondary-button"

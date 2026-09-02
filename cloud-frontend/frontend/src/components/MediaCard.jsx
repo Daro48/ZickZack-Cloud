@@ -68,6 +68,7 @@ function MediaCardBase({
       </div>
       <div className="media-meta">
         <span>{isPhoto ? 'Foto' : 'Video'}</span>
+        {item.shared_by && <span>Von {item.shared_by}</span>}
         <span>{item.original_name}</span>
       </div>
     </article>

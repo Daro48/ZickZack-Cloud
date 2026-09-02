@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppNav } from '../components/AppNav.jsx'
+import { ChangePasswordDialog } from '../components/ChangePasswordDialog.jsx'
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx'
 import { FolderPicker } from '../components/FolderPicker.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
@@ -169,7 +170,7 @@ function MediaPager({
 export function Community({
   username,
   onLogout,
-  onGoHome,
+  onGoStart,
   onGoUpload,
   onGoContent,
 }) {
@@ -182,6 +183,7 @@ export function Community({
   const [deletingId, setDeletingId] = useState(null)
   const [leavingId, setLeavingId] = useState(null)
   const [dialog, setDialog] = useState(null)
+  const [accountOpen, setAccountOpen] = useState(false)
 
   const [selectedFolder, setSelectedFolder] = useState('')
   const [ownItems, setOwnItems] = useState([])
@@ -503,7 +505,7 @@ export function Community({
     <div className="app-shell">
       <Topbar
         username={username}
-        onGoHome={onGoHome}
+        onGoHome={onGoStart}
         onGoCommunity={() => {}}
         center={
           <AppNav
@@ -531,6 +533,13 @@ export function Community({
             <p className="eyebrow">Cloud</p>
             <h1>Community</h1>
           </div>
+          <button
+            className="ghost-button"
+            onClick={() => setAccountOpen(true)}
+            type="button"
+          >
+            Konto
+          </button>
         </header>
 
         {activeShare ? (
@@ -825,6 +834,10 @@ export function Community({
           onConfirm={() => executeLeaveShare(dialog.share)}
           title="Freigabe verlassen"
         />
+      )}
+
+      {accountOpen && (
+        <ChangePasswordDialog onClose={() => setAccountOpen(false)} />
       )}
     </div>
   )

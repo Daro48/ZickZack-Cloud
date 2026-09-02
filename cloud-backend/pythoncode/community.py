@@ -109,8 +109,25 @@ def load_recipients(cursor, share_id):
 
 def count_share_items(cursor, share_id):
     cursor.execute(
-        "SELECT COUNT(*) AS total FROM share_items WHERE share_id = %s",
-        (share_id,),
+        """
+        SELECT
+            (
+                SELECT COUNT(*)
+                FROM share_items
+                INNER JOIN photos ON photos.id = share_items.media_id
+                WHERE share_items.share_id = %s
+                  AND share_items.media_type = 'photo'
+                  AND photos.deleted_at IS NULL
+            ) + (
+                SELECT COUNT(*)
+                FROM share_items
+                INNER JOIN videos ON videos.id = share_items.media_id
+                WHERE share_items.share_id = %s
+                  AND share_items.media_type = 'video'
+                  AND videos.deleted_at IS NULL
+            ) AS total
+        """,
+        (share_id, share_id),
     )
     return int((cursor.fetchone() or {}).get("total") or 0)
 
@@ -127,7 +144,9 @@ def fetch_share_items_page(cursor, share_id, owner_id, offset, limit):
             stored_path,
             mime_type,
             size_bytes,
-            created_at
+            created_at,
+            captured_at,
+            folder
         FROM (
             (
                 SELECT
@@ -137,13 +156,16 @@ def fetch_share_items_page(cursor, share_id, owner_id, offset, limit):
                     photos.stored_path,
                     photos.mime_type,
                     photos.size_bytes,
-                    photos.created_at
+                    photos.created_at,
+                    photos.captured_at,
+                    photos.folder
                 FROM share_items
                 INNER JOIN photos
                     ON photos.id = share_items.media_id
                    AND photos.user_id = %s
                 WHERE share_items.share_id = %s
                   AND share_items.media_type = 'photo'
+                  AND photos.deleted_at IS NULL
                 ORDER BY photos.created_at DESC, photos.id DESC
                 LIMIT %s
             )
@@ -156,13 +178,16 @@ def fetch_share_items_page(cursor, share_id, owner_id, offset, limit):
                     videos.stored_path,
                     videos.mime_type,
                     videos.size_bytes,
-                    videos.created_at
+                    videos.created_at,
+                    videos.captured_at,
+                    videos.folder
                 FROM share_items
                 INNER JOIN videos
                     ON videos.id = share_items.media_id
                    AND videos.user_id = %s
                 WHERE share_items.share_id = %s
                   AND share_items.media_type = 'video'
+                  AND videos.deleted_at IS NULL
                 ORDER BY videos.created_at DESC, videos.id DESC
                 LIMIT %s
             )
@@ -220,7 +245,7 @@ def list_owned_folder_media(cursor, owner_id, folder_name):
         """
         SELECT id
         FROM photos
-        WHERE user_id = %s AND folder = %s
+        WHERE user_id = %s AND folder = %s AND deleted_at IS NULL
         ORDER BY created_at DESC, id DESC
         LIMIT %s
         """,
@@ -234,7 +259,7 @@ def list_owned_folder_media(cursor, owner_id, folder_name):
         """
         SELECT id
         FROM videos
-        WHERE user_id = %s AND folder = %s
+        WHERE user_id = %s AND folder = %s AND deleted_at IS NULL
         ORDER BY created_at DESC, id DESC
         LIMIT %s
         """,
@@ -366,7 +391,7 @@ def parse_owned_items(cursor, owner_id, raw_items):
     if wanted_photos:
         placeholders = ", ".join(["%s"] * len(wanted_photos))
         cursor.execute(
-            f"SELECT id FROM photos WHERE user_id = %s AND id IN ({placeholders})",
+            f"SELECT id FROM photos WHERE user_id = %s AND id IN ({placeholders}) AND deleted_at IS NULL",
             (owner_id, *wanted_photos),
         )
         found = {row["id"] for row in cursor.fetchall()}
@@ -377,7 +402,7 @@ def parse_owned_items(cursor, owner_id, raw_items):
     if wanted_videos:
         placeholders = ", ".join(["%s"] * len(wanted_videos))
         cursor.execute(
-            f"SELECT id FROM videos WHERE user_id = %s AND id IN ({placeholders})",
+            f"SELECT id FROM videos WHERE user_id = %s AND id IN ({placeholders}) AND deleted_at IS NULL",
             (owner_id, *wanted_videos),
         )
         found = {row["id"] for row in cursor.fetchall()}

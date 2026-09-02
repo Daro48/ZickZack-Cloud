@@ -46,6 +46,13 @@ export function resetPassword({ username, recoveryCode, password }) {
   })
 }
 
+export function changePassword({ currentPassword, newPassword }) {
+  return requestAuth('/bp/auth/change-password', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  })
+}
+
 export function loginUser({ username, password }) {
   return requestAuth('/bp/auth/login', { username, password })
 }

@@ -3,7 +3,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, make_response
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 from database import get_database_connection
 import os
 
@@ -338,5 +338,96 @@ def logout():
         )
         return response
 
+    finally:
+        connection.close()
+
+
+@login_bp.post("/bp/auth/change-password")
+def change_password():
+    data = request.get_json(silent=True) or {}
+    current_password = data.get("current_password") or data.get("password") or ""
+    new_password = data.get("new_password") or ""
+
+    if not current_password or not new_password:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Aktuelles und neues Passwort sind erforderlich.",
+                }
+            ),
+            400,
+        )
+    if len(new_password) < 6:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Das neue Passwort muss mindestens 6 Zeichen haben.",
+                }
+            ),
+            400,
+        )
+    if current_password == new_password:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Das neue Passwort muss sich vom aktuellen unterscheiden.",
+                }
+            ),
+            400,
+        )
+
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    connection = get_database_connection()
+    try:
+        delete_expired_sessions_throttled(connection)
+        user = resolve_session_user(connection, session_token)
+        if not user:
+            return (
+                jsonify({"status": "error", "message": "Nicht angemeldet"}),
+                401,
+            )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, password_hash FROM users WHERE id = %s",
+                (user["id"],),
+            )
+            row = cursor.fetchone()
+            if not row or not check_password_hash(row["password_hash"], current_password):
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Das aktuelle Passwort ist falsch.",
+                        }
+                    ),
+                    401,
+                )
+
+            cursor.execute(
+                "UPDATE users SET password_hash = %s WHERE id = %s",
+                (generate_password_hash(new_password), user["id"]),
+            )
+            if session_token:
+                cursor.execute(
+                    """
+                    DELETE FROM sessions
+                    WHERE user_id = %s AND session_token <> %s
+                    """,
+                    (user["id"], session_token),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM sessions WHERE user_id = %s",
+                    (user["id"],),
+                )
+
+        connection.commit()
+        invalidate_user_sessions(user["id"])
+        cache_session_user(session_token, user)
+        return jsonify({"status": "ok", "message": "Passwort gespeichert."})
     finally:
         connection.close()

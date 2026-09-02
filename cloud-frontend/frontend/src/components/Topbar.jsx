@@ -26,7 +26,7 @@ export function Topbar({
   const logo = (
     <>
       Cloud
-      <span className="topbar-version">Version 2.0.1</span>
+      <span className="topbar-version">Version 2.2.1</span>
     </>
   )
 
@@ -155,22 +155,20 @@ export function Topbar({
 
   return (
     <header className="topbar">
-      {onGoHome ? (
-        <button
-          aria-label="Zur Startseite"
-          className="topbar-logo"
-          onClick={onGoHome}
-          type="button"
-        >
-          {logo}
-        </button>
-      ) : (
-        <span className="topbar-logo">{logo}</span>
-      )}
+      <div className="topbar-start">
+        {onGoHome ? (
+          <button
+            aria-label="Zur Startseite"
+            className="topbar-logo"
+            onClick={onGoHome}
+            type="button"
+          >
+            {logo}
+          </button>
+        ) : (
+          <span className="topbar-logo">{logo}</span>
+        )}
 
-      <div className="topbar-center">{center}</div>
-
-      <div className="topbar-end">
         {username && storage && (
           <div
             aria-label={`Speicher ${percent} Prozent, ${formatBytes(used)} von ${formatBytes(quota)}`}
@@ -195,7 +193,11 @@ export function Topbar({
             </span>
           </div>
         )}
+      </div>
 
+      <div className="topbar-center">{center}</div>
+
+      <div className="topbar-end">
         <div className="topbar-meta">
           {username && (
             <div className="notify-wrap" ref={inboxRef}>
@@ -210,7 +212,30 @@ export function Topbar({
                 onClick={openInbox}
                 type="button"
               >
-                Mitteilungen
+                <svg
+                  aria-hidden="true"
+                  className="notify-bell"
+                  fill="none"
+                  focusable="false"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  width="20"
+                >
+                  <path
+                    d="M6 9a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                  <path
+                    d="M10 21a2 2 0 0 0 4 0"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                </svg>
                 {unread > 0 && <span className="notify-badge">{unread}</span>}
               </button>
               {inboxOpen && (
@@ -253,7 +278,49 @@ export function Topbar({
             onClick={() => setTheme((current) => toggleTheme(current))}
             type="button"
           >
-            {theme === 'light' ? 'Dunkel' : 'Hell'}
+            {theme === 'light' ? (
+              <svg
+                aria-hidden="true"
+                className="theme-toggle-icon"
+                fill="none"
+                focusable="false"
+                height="20"
+                viewBox="0 0 24 24"
+                width="20"
+              >
+                <path
+                  d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            ) : (
+              <svg
+                aria-hidden="true"
+                className="theme-toggle-icon"
+                fill="none"
+                focusable="false"
+                height="20"
+                viewBox="0 0 24 24"
+                width="20"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="4"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                />
+                <path
+                  d="M12 3v1.6M12 19.4V21M4.93 4.93l1.13 1.13M17.94 17.94l1.13 1.13M3 12h1.6M19.4 12H21M4.93 19.07l1.13-1.13M17.94 6.06l1.13-1.13"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            )}
           </button>
 
           {username && <span className="topbar-user">{username.toUpperCase()}</span>}

@@ -14,8 +14,12 @@ import {
   deleteMediaItems,
   fetchFolderMedia,
   fetchFolders,
+  fetchTrashMedia,
   moveMediaItems,
+  purgeMediaItems,
   renameFolder,
+  renameMediaItem,
+  restoreMediaItems,
 } from '../services/mediaApi.js'
 
 const FOLDER_PAGE_SIZE = 200
@@ -28,15 +32,15 @@ const TYPE_OPTIONS = [
 ]
 
 const SORT_OPTIONS = [
-  { value: 'newest', label: 'Neueste' },
-  { value: 'oldest', label: 'Älteste' },
+  { value: 'newest', label: 'Neueste Aufnahme' },
+  { value: 'oldest', label: 'Älteste Aufnahme' },
   { value: 'name', label: 'Name' },
 ]
 
 export function ViewContent({
   username,
   onLogout,
-  onGoHome,
+  onGoStart,
   onGoUpload,
   onGoCommunity,
 }) {
@@ -57,6 +61,7 @@ export function ViewContent({
   const [shareTarget, setShareTarget] = useState(null)
   const [shareNotice, setShareNotice] = useState('')
   const [isBusy, setIsBusy] = useState(false)
+  const [trashMode, setTrashMode] = useState(false)
   const [dialog, setDialog] = useState(null)
   const [renameValue, setRenameValue] = useState('')
   const [moveFolders, setMoveFolders] = useState([])
@@ -90,12 +95,19 @@ export function ViewContent({
 
   function handleFolderChange(folder) {
     resetMedia()
+    setTrashMode(false)
     setSelectedFolder(folder)
     setShareNotice('')
   }
 
+  function openTrash() {
+    resetMedia()
+    setTrashMode((current) => !current)
+    setShareNotice('')
+  }
+
   const loadPage = useCallback(async () => {
-    if (!selectedFolder || isLoadingRef.current) {
+    if ((!trashMode && !selectedFolder) || isLoadingRef.current) {
       return
     }
 
@@ -105,13 +117,20 @@ export function ViewContent({
     setError('')
 
     try {
-      const data = await fetchFolderMedia(selectedFolder, {
-        offset: loadedCountRef.current,
-        limit: FOLDER_PAGE_SIZE,
-        query: debouncedQuery,
-        type: typeFilter,
-        sort,
-      })
+      const data = trashMode
+        ? await fetchTrashMedia({
+            offset: loadedCountRef.current,
+            limit: FOLDER_PAGE_SIZE,
+            query: debouncedQuery,
+            type: typeFilter,
+          })
+        : await fetchFolderMedia(selectedFolder, {
+            offset: loadedCountRef.current,
+            limit: FOLDER_PAGE_SIZE,
+            query: debouncedQuery,
+            type: typeFilter,
+            sort,
+          })
       if (requestId !== loadIdRef.current) {
         return
       }
@@ -134,20 +153,20 @@ export function ViewContent({
       }
       isLoadingRef.current = false
     }
-  }, [debouncedQuery, selectedFolder, sort, typeFilter])
+  }, [debouncedQuery, selectedFolder, sort, trashMode, typeFilter])
 
   useEffect(() => {
     resetMedia()
-  }, [debouncedQuery, sort, typeFilter])
+  }, [debouncedQuery, sort, typeFilter, trashMode])
 
   const canLoadMore = hasLoaded && hasMore
 
   useEffect(() => {
-    if (!selectedFolder || hasLoaded || isLoading) {
+    if ((!trashMode && !selectedFolder) || hasLoaded || isLoading) {
       return
     }
     loadPage()
-  }, [selectedFolder, hasLoaded, isLoading, loadPage])
+  }, [selectedFolder, trashMode, hasLoaded, isLoading, loadPage])
 
   const closeViewer = useCallback(() => {
     setViewerIndex(null)
@@ -291,12 +310,125 @@ export function ViewContent({
   }
 
   function handleRenameFolder() {
-    if (!selectedFolder || isBusy) {
+    if (!selectedFolder || isBusy || trashMode) {
       return
     }
     setRenameValue(selectedFolder)
     setDialog({ type: 'rename' })
     setError('')
+  }
+
+  function handleRenameItems(toRename) {
+    if (toRename.length !== 1 || isBusy || trashMode) {
+      return
+    }
+    setRenameValue(toRename[0].original_name || '')
+    setDialog({ type: 'rename-file', item: toRename[0] })
+    setError('')
+  }
+
+  async function executeRenameFile() {
+    const nextName = renameValue.trim()
+    const item = dialog?.item
+    if (!item || !nextName || isBusy) {
+      return
+    }
+    setIsBusy(true)
+    setError('')
+    try {
+      const data = await renameMediaItem(item, nextName)
+      const name = data.original_name || nextName
+      setItems((current) =>
+        current.map((entry) =>
+          mediaKey(entry) === mediaKey(item)
+            ? { ...entry, original_name: name }
+            : entry,
+        ),
+      )
+      setShareNotice(`„${name}“ umbenannt.`)
+      setDialog(null)
+    } catch (renameError) {
+      setError(renameError.message)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  function handleRestoreItems(toRestore) {
+    if (!toRestore.length || isBusy) {
+      return
+    }
+    setDialog({ type: 'restore-items', items: toRestore })
+    setError('')
+  }
+
+  async function executeRestoreItems(toRestore) {
+    setIsBusy(true)
+    setError('')
+    try {
+      await restoreMediaItems(toRestore)
+      const removed = new Set(toRestore.map((item) => mediaKey(item)))
+      setItems((current) => current.filter((item) => !removed.has(mediaKey(item))))
+      setSelectedKeys(new Set())
+      setTotal((current) =>
+        typeof current === 'number' ? Math.max(0, current - toRestore.length) : current,
+      )
+      setViewerIndex(null)
+      setShareNotice(
+        toRestore.length === 1
+          ? '1 Datei wiederhergestellt.'
+          : `${toRestore.length} Dateien wiederhergestellt.`,
+      )
+      setDialog(null)
+    } catch (restoreError) {
+      setError(restoreError.message)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  function handlePurgeItems(toPurge, empty = false) {
+    if ((!empty && !toPurge.length) || isBusy) {
+      return
+    }
+    setDialog({ type: 'purge-items', items: toPurge, empty })
+    setError('')
+  }
+
+  async function executePurgeItems(dialogState) {
+    setIsBusy(true)
+    setError('')
+    try {
+      const data = await purgeMediaItems(dialogState.items || [], {
+        empty: Boolean(dialogState.empty),
+      })
+      if (dialogState.empty) {
+        setItems([])
+        setTotal(0)
+        setHasMore(false)
+      } else {
+        const removed = new Set(dialogState.items.map((item) => mediaKey(item)))
+        setItems((current) => current.filter((item) => !removed.has(mediaKey(item))))
+        setTotal((current) =>
+          typeof current === 'number'
+            ? Math.max(0, current - dialogState.items.length)
+            : current,
+        )
+      }
+      setSelectedKeys(new Set())
+      setViewerIndex(null)
+      const deleted = typeof data.deleted === 'number' ? data.deleted : 0
+      setShareNotice(
+        deleted === 1
+          ? '1 Datei endgültig gelöscht.'
+          : `${deleted} Dateien endgültig gelöscht.`,
+      )
+      setDialog(null)
+    } catch (purgeError) {
+      setError(purgeError.message)
+    } finally {
+      setIsBusy(false)
+    }
   }
 
   async function executeRenameFolder() {
@@ -368,7 +500,7 @@ export function ViewContent({
     <div className="app-shell">
       <Topbar
         username={username}
-        onGoHome={onGoHome}
+        onGoHome={onGoStart}
         onGoCommunity={onGoCommunity}
         center={
           <AppNav
@@ -394,42 +526,67 @@ export function ViewContent({
           </div>
         </header>
 
-        <FolderPicker
-          allowCreate={false}
-          folder={selectedFolder}
-          onFolderChange={handleFolderChange}
-          refreshKey={folderRefreshKey}
-          username={username}
-        />
+        <div className="content-folder-row">
+          <FolderPicker
+            allowCreate={false}
+            folder={selectedFolder}
+            onFolderChange={handleFolderChange}
+            refreshKey={folderRefreshKey}
+            username={username}
+          />
+          <button
+            aria-pressed={trashMode}
+            className={`secondary-button${trashMode ? ' is-active' : ''}`}
+            onClick={openTrash}
+            type="button"
+          >
+            Papierkorb
+          </button>
+        </div>
 
-        {selectedFolder && (
+        {(selectedFolder || trashMode) && (
           <section className="media-toolbar" aria-label="Ordner und Filter">
             <div className="media-toolbar-row is-actions">
-              <button
-                className="ghost-button"
-                disabled={isBusy}
-                onClick={handleRenameFolder}
-                type="button"
-              >
-                Ordner umbenennen
-              </button>
-              <button
-                className="danger-button"
-                disabled={isBusy}
-                onClick={handleDeleteFolder}
-                type="button"
-              >
-                Ordner löschen
-              </button>
-              <button
-                className="secondary-button"
-                onClick={() =>
-                  setShareTarget({ kind: 'folder', folder: selectedFolder })
-                }
-                type="button"
-              >
-                Ganzen Ordner teilen
-              </button>
+              {trashMode ? (
+                <>
+                  <button
+                    className="danger-button"
+                    disabled={isBusy || items.length === 0}
+                    onClick={() => handlePurgeItems(items, true)}
+                    type="button"
+                  >
+                    Papierkorb leeren
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className="ghost-button"
+                    disabled={isBusy}
+                    onClick={handleRenameFolder}
+                    type="button"
+                  >
+                    Ordner umbenennen
+                  </button>
+                  <button
+                    className="danger-button"
+                    disabled={isBusy}
+                    onClick={handleDeleteFolder}
+                    type="button"
+                  >
+                    Ordner löschen
+                  </button>
+                  <button
+                    className="secondary-button"
+                    onClick={() =>
+                      setShareTarget({ kind: 'folder', folder: selectedFolder })
+                    }
+                    type="button"
+                  >
+                    Ganzen Ordner teilen
+                  </button>
+                </>
+              )}
             </div>
             <div className="media-toolbar-row is-filters">
               <label className="folder-field media-search">
@@ -448,34 +605,44 @@ export function ViewContent({
                 options={TYPE_OPTIONS}
                 value={typeFilter}
               />
-              <SelectMenu
-                accent
-                label="Sortierung"
-                onChange={setSort}
-                options={SORT_OPTIONS}
-                value={sort}
-              />
+              {!trashMode && (
+                <SelectMenu
+                  accent
+                  label="Sortierung"
+                  onChange={setSort}
+                  options={SORT_OPTIONS}
+                  value={sort}
+                />
+              )}
             </div>
           </section>
         )}
 
         {shareNotice && <p className="upload-ok share-notice">{shareNotice}</p>}
+        {trashMode && (
+          <p className="folder-hint">
+            Dateien bleiben 30 Tage im Papierkorb und werden danach endgültig
+            gelöscht.
+          </p>
+        )}
 
         <section className="media-section" aria-label="Inhalte">
           {error && <p className="form-error">{error}</p>}
 
-          {!selectedFolder ? (
+          {!trashMode && !selectedFolder ? (
             <div className="empty-panel">
               <p>Ordner wählen.</p>
               <span>Danach erscheinen die Fotos und Videos hier.</span>
             </div>
           ) : hasLoaded && items.length === 0 ? (
             <div className="empty-panel">
-              <p>Nichts gefunden.</p>
+              <p>{trashMode ? 'Papierkorb ist leer.' : 'Nichts gefunden.'}</p>
               <span>
-                {debouncedQuery || typeFilter !== 'all'
-                  ? 'Passe Suche oder Filter an.'
-                  : 'Lade Dateien über Upload hoch, dann erscheinen sie hier.'}
+                {trashMode
+                  ? 'Gelöschte Dateien erscheinen hier für 30 Tage.'
+                  : debouncedQuery || typeFilter !== 'all'
+                    ? 'Passe Suche oder Filter an.'
+                    : 'Lade Dateien über Upload hoch, dann erscheinen sie hier.'}
               </span>
             </div>
           ) : items.length > 0 ? (
@@ -526,12 +693,33 @@ export function ViewContent({
 
       <SelectionPopup
         count={selectedItems.length}
+        deleteLabel={
+          trashMode
+            ? selectedItems.length === 1
+              ? 'Endgültig löschen'
+              : `${selectedItems.length} endgültig löschen`
+            : undefined
+        }
         onClear={clearSelection}
-        onDelete={() => handleDeleteItems(selectedItems)}
-        onMove={() => handleMoveItems(selectedItems)}
+        onDelete={
+          trashMode
+            ? () => handlePurgeItems(selectedItems)
+            : () => handleDeleteItems(selectedItems)
+        }
+        onMove={trashMode ? undefined : () => handleMoveItems(selectedItems)}
+        onRename={
+          trashMode || selectedItems.length !== 1
+            ? undefined
+            : () => handleRenameItems(selectedItems)
+        }
+        onRestore={
+          trashMode ? () => handleRestoreItems(selectedItems) : undefined
+        }
         onSelectAll={items.length > 0 ? selectAllVisible : undefined}
-        onShare={() =>
-          setShareTarget({ kind: 'items', items: selectedItems })
+        onShare={
+          trashMode
+            ? undefined
+            : () => setShareTarget({ kind: 'items', items: selectedItems })
         }
       />
 
@@ -540,7 +728,12 @@ export function ViewContent({
           index={viewerIndex}
           items={items}
           onClose={closeViewer}
-          onDelete={(item) => handleDeleteItems([item])}
+          onDelete={
+            trashMode
+              ? (item) => handlePurgeItems([item])
+              : (item) => handleDeleteItems([item])
+          }
+          deleteLabel={trashMode ? 'Endgültig löschen' : undefined}
           onIndexChange={setViewerIndex}
         />
       )}
@@ -612,13 +805,13 @@ export function ViewContent({
         <ConfirmDialog
           busy={isBusy}
           confirmLabel={
-            dialog.items.length === 1 ? 'Datei löschen' : `${dialog.items.length} Dateien löschen`
+            dialog.items.length === 1 ? 'In den Papierkorb' : `${dialog.items.length} in den Papierkorb`
           }
           danger
           description={
             dialog.items.length === 1
-              ? `„${dialog.items[0].original_name}“ wird dauerhaft entfernt und kann nicht wiederhergestellt werden.`
-              : `${dialog.items.length} Dateien werden dauerhaft entfernt und können nicht wiederhergestellt werden.`
+              ? `„${dialog.items[0].original_name}“ wird in den Papierkorb gelegt und nach 30 Tagen endgültig gelöscht.`
+              : `${dialog.items.length} Dateien werden in den Papierkorb gelegt und nach 30 Tagen endgültig gelöscht.`
           }
           error={error}
           onCancel={closeDialog}
@@ -632,11 +825,79 @@ export function ViewContent({
           busy={isBusy}
           confirmLabel="Ordner löschen"
           danger
-          description={`Ordner „${selectedFolder}“ und alle Dateien darin werden dauerhaft entfernt. Das kann nicht rückgängig gemacht werden.`}
+          description={`Dateien in „${selectedFolder}“ werden in den Papierkorb gelegt und nach 30 Tagen endgültig gelöscht. Der leere Ordner bleibt erhalten, solange noch Dateien im Papierkorb liegen.`}
           error={error}
           onCancel={closeDialog}
           onConfirm={executeDeleteFolder}
           title="Ordner löschen"
+        />
+      )}
+
+      {dialog?.type === 'rename-file' && (
+        <ConfirmDialog
+          busy={isBusy}
+          confirmDisabled={!renameValue.trim()}
+          confirmLabel="Datei umbenennen"
+          description="Nur der angezeigte Name ändert sich. Die Datei selbst bleibt am selben Ort."
+          error={error}
+          onCancel={closeDialog}
+          onConfirm={executeRenameFile}
+          title="Datei umbenennen"
+        >
+          <label className="folder-field">
+            <span className="folder-field-label">Neuer Name</span>
+            <input
+              autoFocus
+              maxLength={255}
+              onChange={(event) => setRenameValue(event.target.value)}
+              value={renameValue}
+            />
+          </label>
+        </ConfirmDialog>
+      )}
+
+      {dialog?.type === 'restore-items' && (
+        <ConfirmDialog
+          busy={isBusy}
+          confirmLabel={
+            dialog.items.length === 1
+              ? 'Datei wiederherstellen'
+              : `${dialog.items.length} Dateien wiederherstellen`
+          }
+          description={
+            dialog.items.length === 1
+              ? `„${dialog.items[0].original_name}“ kommt zurück in den Ordner „${dialog.items[0].folder || 'Unbekannt'}“.`
+              : `${dialog.items.length} Dateien kommen zurück in ihre ursprünglichen Ordner.`
+          }
+          error={error}
+          onCancel={closeDialog}
+          onConfirm={() => executeRestoreItems(dialog.items)}
+          title="Wiederherstellen"
+        />
+      )}
+
+      {dialog?.type === 'purge-items' && (
+        <ConfirmDialog
+          busy={isBusy}
+          confirmLabel={
+            dialog.empty
+              ? 'Papierkorb leeren'
+              : dialog.items.length === 1
+                ? 'Endgültig löschen'
+                : `${dialog.items.length} endgültig löschen`
+          }
+          danger
+          description={
+            dialog.empty
+              ? 'Alle Dateien im Papierkorb werden dauerhaft entfernt. Das kann nicht rückgängig gemacht werden.'
+              : dialog.items.length === 1
+                ? `„${dialog.items[0].original_name}“ wird dauerhaft entfernt und kann nicht wiederhergestellt werden.`
+                : `${dialog.items.length} Dateien werden dauerhaft entfernt und können nicht wiederhergestellt werden.`
+          }
+          error={error}
+          onCancel={closeDialog}
+          onConfirm={() => executePurgeItems(dialog)}
+          title={dialog.empty ? 'Papierkorb leeren' : 'Endgültig löschen'}
         />
       )}
 

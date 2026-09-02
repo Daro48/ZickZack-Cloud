@@ -90,9 +90,35 @@ def ensure_folder_column(cursor, table):
 
 def ensure_column(cursor, table, column, definition):
     if column_info(cursor, table, column) is not None:
-        return
+        return False
     cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     print(f"[schema] {table}: Spalte {column} angelegt.")
+    return True
+
+
+def ensure_media_lifecycle_columns(cursor):
+    """Aufnahmedatum zum Sortieren und Soft-Delete für den Papierkorb."""
+    for table in MEDIA_TABLES:
+        added_captured = ensure_column(cursor, table, "captured_at", "DATETIME NULL")
+        ensure_column(cursor, table, "deleted_at", "DATETIME NULL")
+        if added_captured:
+            cursor.execute(
+                f"""
+                UPDATE {table}
+                SET captured_at = created_at
+                WHERE captured_at IS NULL
+                """
+            )
+            print(f"[schema] {table}: captured_at aus created_at übernommen.")
+        index_name = f"idx_{table}_user_deleted_captured"
+        if not index_exists(cursor, table, index_name):
+            cursor.execute(
+                f"""
+                CREATE INDEX {index_name}
+                ON {table} (user_id, deleted_at, captured_at)
+                """
+            )
+            print(f"[schema] {table}: Index {index_name} angelegt.")
 
 
 def drop_share_links_table(cursor):
@@ -195,8 +221,17 @@ def apply_migrations(connection):
         ensure_session_expiry_index(cursor)
         for table in MEDIA_TABLES:
             ensure_folder_column(cursor, table)
+        ensure_media_lifecycle_columns(cursor)
         ensure_share_tables(cursor)
     connection.commit()
+    try:
+        from media import purge_expired_trash
+
+        purged = purge_expired_trash(connection)
+        if purged:
+            print(f"[schema] {purged} Datei(en) aus dem Papierkorb endgültig entfernt.")
+    except Exception as error:
+        print(f"[schema] Papierkorb-Aufräumen übersprungen: {error}")
 
 
 def run_startup_migrations():

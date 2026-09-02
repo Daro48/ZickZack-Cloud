@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import { AuthLayout } from './components/AuthLayout.jsx'
 import { HomePage } from './pages/HomePage.jsx'
+import { TimelinePage } from './pages/TimelinePage.jsx'
 import { Community } from './pages/Community.jsx'
 import { ViewContent } from './pages/ViewContent.jsx'
 import { LoginPage } from './pages/LoginPage.jsx'
@@ -38,7 +39,8 @@ function App() {
   const [isCheckingSession, setIsCheckingSession] = useState(true)
   const [recoveryCode, setRecoveryCode] = useState('')
   const [seenPages, setSeenPages] = useState({
-    home: true,
+    start: true,
+    home: initialLocation.page === 'home',
     content: initialLocation.page === 'content',
     community: initialLocation.page === 'community',
   })
@@ -100,7 +102,7 @@ function App() {
           setPage(current.page)
           syncHistory(current.page, { replace: true })
         } else {
-          openPage('home', { replace: true })
+          openPage('start', { replace: true })
         }
       } catch {
         if (!isMounted) {
@@ -141,7 +143,7 @@ function App() {
     try {
       const data = await loginUser({ username, password })
       setUser(data.user || { username })
-      openPage('home')
+      openPage('start')
     } catch (error) {
       setAuthError(error.message)
     } finally {
@@ -159,7 +161,7 @@ function App() {
       const data = await loginUser({ username, password })
       setUser(data.user || { username })
       setRecoveryCode(registerData.recovery_code || '')
-      openPage(registerData.recovery_code ? 'recovery-code' : 'home')
+      openPage(registerData.recovery_code ? 'recovery-code' : 'start')
     } catch (error) {
       setAuthError(error.message)
     } finally {
@@ -190,7 +192,7 @@ function App() {
       setUser(null)
       setAuthError('')
       setAuthNotice('')
-      setSeenPages({ home: true, content: false, community: false })
+      setSeenPages({ start: true, home: false, content: false, community: false })
       openPage('login')
     }
   }
@@ -232,31 +234,46 @@ function App() {
           recoveryCode={recoveryCode}
           onContinue={() => {
             setRecoveryCode('')
-            openPage('home')
+            openPage('start')
           }}
         />
       </AuthLayout>
     )
   }
 
-  if (user && (page === 'home' || page === 'content' || page === 'community')) {
+  if (user && (page === 'start' || page === 'home' || page === 'content' || page === 'community')) {
     return (
       <>
-        <div hidden={page !== 'home'}>
-          <HomePage
-            username={user.username}
-            onLogout={handleLogout}
-            onGoHome={() => openPage('home')}
-            onGoContent={() => openPage('content')}
-            onGoCommunity={() => openPage('community')}
-          />
-        </div>
+        {seenPages.start && (
+          <div hidden={page !== 'start'}>
+            <TimelinePage
+              username={user.username}
+              onLogout={handleLogout}
+              onGoStart={() => openPage('start')}
+              onGoUpload={() => openPage('home')}
+              onGoContent={() => openPage('content')}
+              onGoCommunity={() => openPage('community')}
+            />
+          </div>
+        )}
+        {seenPages.home && (
+          <div hidden={page !== 'home'}>
+            <HomePage
+              username={user.username}
+              onLogout={handleLogout}
+              onGoStart={() => openPage('start')}
+              onGoUpload={() => openPage('home')}
+              onGoContent={() => openPage('content')}
+              onGoCommunity={() => openPage('community')}
+            />
+          </div>
+        )}
         {seenPages.content && (
           <div hidden={page !== 'content'}>
             <ViewContent
               username={user.username}
               onLogout={handleLogout}
-              onGoHome={() => openPage('home')}
+              onGoStart={() => openPage('start')}
               onGoUpload={() => openPage('home')}
               onGoCommunity={() => openPage('community')}
             />
@@ -267,7 +284,7 @@ function App() {
             <Community
               username={user.username}
               onLogout={handleLogout}
-              onGoHome={() => openPage('home')}
+              onGoStart={() => openPage('start')}
               onGoUpload={() => openPage('home')}
               onGoContent={() => openPage('content')}
             />

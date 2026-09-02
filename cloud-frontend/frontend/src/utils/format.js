@@ -1,3 +1,20 @@
+export function formatDayHeading(value) {
+  const raw = String(value || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return 'Ohne Aufnahmedatum'
+  }
+  const date = new Date(`${raw}T12:00:00`)
+  if (Number.isNaN(date.getTime())) {
+    return 'Ohne Aufnahmedatum'
+  }
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
 export function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) {
     return '—'

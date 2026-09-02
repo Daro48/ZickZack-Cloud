@@ -3,6 +3,7 @@ export const PAGE_TITLES = {
   register: 'Registrieren',
   'reset-password': 'Passwort zurücksetzen',
   'recovery-code': 'Wiederherstellungscode',
+  start: 'Mit dir geteilt',
   home: 'Upload',
   content: 'Inhalte',
   community: 'Community',
@@ -13,6 +14,7 @@ const PATH_BY_PAGE = {
   register: '/register',
   'reset-password': '/reset-password',
   'recovery-code': '/recovery',
+  start: '/',
   home: '/upload',
   content: '/inhalte',
   community: '/community',
@@ -25,7 +27,7 @@ export const AUTH_PAGES = new Set([
   'recovery-code',
 ])
 
-export const APP_PAGES = new Set(['home', 'content', 'community'])
+export const APP_PAGES = new Set(['start', 'home', 'content', 'community'])
 
 export function pathForPage(page) {
   return PATH_BY_PAGE[page] || '/login'
@@ -41,6 +43,7 @@ export function parseLocation(pathname) {
     case '/recovery':
       return { page: 'recovery-code' }
     case '/':
+      return { page: 'start' }
     case '/upload':
       return { page: 'home' }
     case '/inhalte':

@@ -1,9 +1,12 @@
 export function SelectionPopup({
   count,
+  deleteLabel,
   onClear,
   onSelectAll,
   onShare,
   onMove,
+  onRename,
+  onRestore,
   onDelete,
 }) {
   if (count < 1) {
@@ -26,7 +29,18 @@ export function SelectionPopup({
         </button>
         {onDelete && (
           <button className="danger-button" onClick={onDelete} type="button">
-            {count === 1 ? 'Datei löschen' : `${count} Dateien löschen`}
+            {deleteLabel ||
+              (count === 1 ? 'Datei löschen' : `${count} Dateien löschen`)}
+          </button>
+        )}
+        {onRestore && (
+          <button className="secondary-button" onClick={onRestore} type="button">
+            Wiederherstellen
+          </button>
+        )}
+        {onRename && (
+          <button className="ghost-button" onClick={onRename} type="button">
+            Umbenennen
           </button>
         )}
         {onMove && (

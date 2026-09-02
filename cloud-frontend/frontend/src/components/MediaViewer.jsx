@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 
 const SWIPE_THRESHOLD = 56
 
-export function MediaViewer({ items, index, onClose, onIndexChange, onDelete }) {
+export function MediaViewer({ items, index, onClose, onIndexChange, onDelete, deleteLabel }) {
   const touchRef = useRef({ x: 0, y: 0, tracking: false })
   const item = items[index]
   const isPhoto = item?.type === 'photo'
@@ -118,7 +118,7 @@ export function MediaViewer({ items, index, onClose, onIndexChange, onDelete }) 
               onClick={() => onDelete(item)}
               type="button"
             >
-              Datei löschen
+              {deleteLabel || 'Datei löschen'}
             </button>
           )}
           <button

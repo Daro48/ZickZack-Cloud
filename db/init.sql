@@ -42,12 +42,15 @@ CREATE TABLE photos (
     folder VARCHAR(64) NOT NULL,
     mime_type VARCHAR(100) NOT NULL,
     size_bytes BIGINT UNSIGNED NOT NULL,
+    captured_at DATETIME NULL,
+    deleted_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id)
         REFERENCES users(id)
         ON DELETE CASCADE,
     INDEX idx_photos_user_created (user_id, created_at),
     INDEX idx_photos_user_folder_created (user_id, folder, created_at),
+    INDEX idx_photos_user_deleted_captured (user_id, deleted_at, captured_at),
     UNIQUE KEY uq_photos_user_stored_name (user_id, stored_name)
 );
 
@@ -61,12 +64,15 @@ CREATE TABLE videos (
     mime_type VARCHAR(100) NOT NULL,
     size_bytes BIGINT UNSIGNED NOT NULL,
     duration_seconds INT UNSIGNED NULL,
+    captured_at DATETIME NULL,
+    deleted_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id)
         REFERENCES users(id)
         ON DELETE CASCADE,
     INDEX idx_videos_user_created (user_id, created_at),
     INDEX idx_videos_user_folder_created (user_id, folder, created_at),
+    INDEX idx_videos_user_deleted_captured (user_id, deleted_at, captured_at),
     UNIQUE KEY uq_videos_user_stored_name (user_id, stored_name)
 );
 
