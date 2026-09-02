@@ -22,7 +22,7 @@ media_bp = Blueprint("media", __name__)
 MEDIA_CACHE_SECONDS = 31536000
 MAX_FOLDER_PAGE_SIZE = 500
 MAX_DELETE_ITEMS = 500
-STORAGE_QUOTA_BYTES = int(os.getenv("STORAGE_QUOTA_BYTES", str(10 * 1024 * 1024 * 1024)))
+STORAGE_QUOTA_BYTES = int(os.getenv("STORAGE_QUOTA_BYTES", str(225 * 1024 * 1024 * 1024)))
 FOLDER_SORTS = {
     "newest": ("created_at DESC, type ASC, id DESC", "created_at DESC, id DESC"),
     "oldest": ("created_at ASC, type ASC, id ASC", "created_at ASC, id ASC"),
