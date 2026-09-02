@@ -1793,6 +1793,7 @@ a.nav-link.is-active {
 }
 
 .selection-popup-actions .primary-button,
+.selection-popup-actions .secondary-button,
 .selection-popup-actions .ghost-button,
 .selection-popup-actions .danger-button {
   margin: 0;
@@ -2416,7 +2417,9 @@ a.nav-link.is-active {
     width: 100%;
   }
 
-  .selection-popup-actions .ghost-button {
+  .selection-popup-actions .ghost-button,
+  .selection-popup-actions .secondary-button,
+  .selection-popup-actions .danger-button {
     width: 100%;
   }
 

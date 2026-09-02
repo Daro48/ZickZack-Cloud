@@ -3,6 +3,7 @@ export function SelectionPopup({
   onClear,
   onSelectAll,
   onShare,
+  onMove,
   onDelete,
 }) {
   if (count < 1) {
@@ -26,6 +27,11 @@ export function SelectionPopup({
         {onDelete && (
           <button className="danger-button" onClick={onDelete} type="button">
             {count === 1 ? 'Datei löschen' : `${count} Dateien löschen`}
+          </button>
+        )}
+        {onMove && (
+          <button className="secondary-button" onClick={onMove} type="button">
+            Verschieben
           </button>
         )}
         {onShare && (

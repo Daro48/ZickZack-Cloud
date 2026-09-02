@@ -13,6 +13,8 @@ import {
   deleteFolder,
   deleteMediaItems,
   fetchFolderMedia,
+  fetchFolders,
+  moveMediaItems,
   renameFolder,
 } from '../services/mediaApi.js'
 
@@ -57,6 +59,9 @@ export function ViewContent({
   const [isBusy, setIsBusy] = useState(false)
   const [dialog, setDialog] = useState(null)
   const [renameValue, setRenameValue] = useState('')
+  const [moveFolders, setMoveFolders] = useState([])
+  const [moveFolder, setMoveFolder] = useState('')
+  const [moveLoading, setMoveLoading] = useState(false)
   const loadIdRef = useRef(0)
   const isLoadingRef = useRef(false)
   const loadedCountRef = useRef(0)
@@ -200,6 +205,63 @@ export function ViewContent({
     }
     setDialog({ type: 'delete-items', items: toDelete })
     setError('')
+  }
+
+  async function handleMoveItems(toMove) {
+    if (!toMove.length || isBusy) {
+      return
+    }
+    setMoveFolder('')
+    setMoveFolders([])
+    setDialog({ type: 'move-items', items: toMove })
+    setError('')
+    setMoveLoading(true)
+    try {
+      const data = await fetchFolders()
+      setMoveFolders(
+        (data.folders || []).filter((name) => name !== selectedFolder),
+      )
+    } catch (loadError) {
+      setError(loadError.message)
+    } finally {
+      setMoveLoading(false)
+    }
+  }
+
+  async function executeMoveItems(toMove) {
+    const destination = moveFolder.trim()
+    if (!destination || isBusy) {
+      return
+    }
+    setIsBusy(true)
+    setError('')
+    try {
+      const data = await moveMediaItems(toMove, destination)
+      const removed = new Set(toMove.map((item) => mediaKey(item)))
+      setItems((current) => current.filter((item) => !removed.has(mediaKey(item))))
+      setSelectedKeys((current) => {
+        const next = new Set(current)
+        for (const key of removed) {
+          next.delete(key)
+        }
+        return next
+      })
+      const moved = typeof data.moved === 'number' ? data.moved : toMove.length
+      setTotal((current) =>
+        typeof current === 'number' ? Math.max(0, current - moved) : current,
+      )
+      setViewerIndex(null)
+      setShareNotice(
+        moved === 1
+          ? `1 Datei nach ${destination} verschoben.`
+          : `${moved} Dateien nach ${destination} verschoben.`,
+      )
+      setDialog(null)
+    } catch (moveError) {
+      setError(moveError.message)
+    } finally {
+      setIsBusy(false)
+    }
   }
 
   async function executeDeleteItems(toDelete) {
@@ -466,6 +528,7 @@ export function ViewContent({
         count={selectedItems.length}
         onClear={clearSelection}
         onDelete={() => handleDeleteItems(selectedItems)}
+        onMove={() => handleMoveItems(selectedItems)}
         onSelectAll={items.length > 0 ? selectAllVisible : undefined}
         onShare={() =>
           setShareTarget({ kind: 'items', items: selectedItems })
@@ -492,6 +555,59 @@ export function ViewContent({
         />
       )}
 
+      {dialog?.type === 'move-items' && (
+        <ConfirmDialog
+          busy={isBusy}
+          confirmDisabled={moveLoading || !moveFolder}
+          confirmLabel={
+            dialog.items.length === 1
+              ? 'Datei verschieben'
+              : `${dialog.items.length} Dateien verschieben`
+          }
+          description={
+            dialog.items.length === 1
+              ? `„${dialog.items[0].original_name}“ wird aus „${selectedFolder}“ in den gewählten Ordner verschoben.`
+              : `${dialog.items.length} Dateien werden aus „${selectedFolder}“ in den gewählten Ordner verschoben.`
+          }
+          error={error}
+          onCancel={closeDialog}
+          onConfirm={() => executeMoveItems(dialog.items)}
+          title="In Ordner verschieben"
+        >
+          {moveLoading ? (
+            <p className="folder-hint">Ordner werden geladen…</p>
+          ) : moveFolders.length === 0 ? (
+            <div className="empty-panel">
+              <p>Kein anderer Ordner.</p>
+              <span>
+                Lege unter Upload zuerst einen Zielordner an, zum Beispiel
+                Urlaub 2024.
+              </span>
+            </div>
+          ) : (
+            <div
+              aria-label="Zielordner"
+              className="share-user-list is-compact"
+              role="group"
+            >
+              {moveFolders.map((name) => {
+                const isActive = moveFolder === name
+                return (
+                  <button
+                    aria-pressed={isActive}
+                    className={`share-user-option${isActive ? ' is-active' : ''}`}
+                    key={name}
+                    onClick={() => setMoveFolder(name)}
+                    type="button"
+                  >
+                    {name}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </ConfirmDialog>
+      )}
       {dialog?.type === 'delete-items' && (
         <ConfirmDialog
           busy={isBusy}

@@ -8,6 +8,7 @@ export function ConfirmDialog({
   cancelLabel = 'Abbrechen',
   danger = false,
   busy = false,
+  confirmDisabled = false,
   error = '',
   children,
   onCancel,
@@ -48,7 +49,7 @@ export function ConfirmDialog({
         className="share-dialog-panel"
         onSubmit={(event) => {
           event.preventDefault()
-          if (!busy) {
+          if (!busy && !confirmDisabled) {
             onConfirm()
           }
         }}
@@ -73,7 +74,7 @@ export function ConfirmDialog({
 
         <button
           className={danger ? 'danger-button share-dialog-submit' : 'primary-button share-dialog-submit'}
-          disabled={busy}
+          disabled={busy || confirmDisabled}
           type="submit"
         >
           {busy ? 'Wird ausgeführt…' : confirmLabel}

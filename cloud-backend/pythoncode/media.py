@@ -725,7 +725,7 @@ def collect_owned_media(cursor, user_id, raw_items):
         placeholders = ", ".join(["%s"] * len(wanted_photos))
         cursor.execute(
             f"""
-            SELECT id, stored_path
+            SELECT id, stored_path, folder
             FROM photos
             WHERE user_id = %s AND id IN ({placeholders})
             """,
@@ -734,12 +734,14 @@ def collect_owned_media(cursor, user_id, raw_items):
         found = cursor.fetchall()
         if {row["id"] for row in found} != wanted_photos:
             return None
-        owned.extend(("photo", row["id"], row["stored_path"]) for row in found)
+        owned.extend(
+            ("photo", row["id"], row["stored_path"], row["folder"]) for row in found
+        )
     if wanted_videos:
         placeholders = ", ".join(["%s"] * len(wanted_videos))
         cursor.execute(
             f"""
-            SELECT id, stored_path
+            SELECT id, stored_path, folder
             FROM videos
             WHERE user_id = %s AND id IN ({placeholders})
             """,
@@ -748,13 +750,15 @@ def collect_owned_media(cursor, user_id, raw_items):
         found = cursor.fetchall()
         if {row["id"] for row in found} != wanted_videos:
             return None
-        owned.extend(("video", row["id"], row["stored_path"]) for row in found)
+        owned.extend(
+            ("video", row["id"], row["stored_path"], row["folder"]) for row in found
+        )
     return owned
 
 
 def delete_owned_media(cursor, user_id, owned):
     paths = []
-    for media_type, media_id, stored_path in owned:
+    for media_type, media_id, stored_path, *_ in owned:
         table = "photos" if media_type == "photo" else "videos"
         cursor.execute(
             f"DELETE FROM {table} WHERE id = %s AND user_id = %s",
@@ -778,6 +782,45 @@ def rewrite_stored_path(stored_path, old_folder, new_folder):
         parts[1] = new_folder
         return "/".join(parts)
     return stored_path
+
+
+def relocate_media_file(old_stored, new_stored):
+    """Verschiebt Datei und Thumbnail. Gibt Undo-Daten zurück oder None."""
+    old_abs = media_path(old_stored)
+    new_abs = media_path(new_stored)
+    if old_abs is None or new_abs is None or not old_abs.is_file():
+        return None
+    if new_abs.exists():
+        return None
+
+    new_abs.parent.mkdir(parents=True, exist_ok=True)
+    old_abs.replace(new_abs)
+
+    old_thumb = media_path(thumb_relative_path(old_stored).as_posix())
+    new_thumb = media_path(thumb_relative_path(new_stored).as_posix())
+    thumb_moved = False
+    if (
+        old_thumb is not None
+        and new_thumb is not None
+        and old_thumb.is_file()
+        and not new_thumb.exists()
+    ):
+        new_thumb.parent.mkdir(parents=True, exist_ok=True)
+        old_thumb.replace(new_thumb)
+        thumb_moved = True
+
+    return (new_abs, old_abs, new_thumb, old_thumb, thumb_moved)
+
+
+def undo_relocate_media_file(step):
+    new_abs, old_abs, new_thumb, old_thumb, thumb_moved = step
+    old_abs.parent.mkdir(parents=True, exist_ok=True)
+    if new_abs.is_file() and not old_abs.exists():
+        new_abs.replace(old_abs)
+    if thumb_moved and new_thumb is not None and old_thumb is not None:
+        old_thumb.parent.mkdir(parents=True, exist_ok=True)
+        if new_thumb.is_file() and not old_thumb.exists():
+            new_thumb.replace(old_thumb)
 
 
 @media_bp.get("/bp/media/storage")
@@ -872,6 +915,140 @@ def delete_media_items():
         for stored_path in paths:
             unlink_media_files(stored_path)
         return jsonify({"status": "ok", "deleted": len(owned)})
+    finally:
+        connection.close()
+
+
+@media_bp.post("/bp/media/move")
+def move_media_items():
+    data = request.get_json(silent=True) or {}
+    dest_folder = sanitize_folder_name(data.get("folder") or data.get("destination"))
+    raw_items = data.get("items") or []
+    if not dest_folder:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Bitte einen Zielordner wählen.",
+                }
+            ),
+            400,
+        )
+    if not raw_items:
+        return jsonify({"status": "error", "message": "Keine Dateien gewählt."}), 400
+    if len(raw_items) > MAX_DELETE_ITEMS:
+        return (
+            jsonify({"status": "error", "message": "Zu viele Dateien auf einmal."}),
+            400,
+        )
+
+    connection = get_database_connection()
+    moved_files = []
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        existing_folders = set(list_user_folders(user["username"]))
+        if dest_folder not in existing_folders:
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": f'Der Ordner "{dest_folder}" existiert nicht.',
+                    }
+                ),
+                400,
+            )
+
+        with connection.cursor() as cursor:
+            owned = collect_owned_media(cursor, user["id"], raw_items)
+            if owned is None:
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Mindestens eine Datei gehört dir nicht.",
+                        }
+                    ),
+                    400,
+                )
+            if not owned:
+                return (
+                    jsonify({"status": "error", "message": "Keine Dateien gewählt."}),
+                    400,
+                )
+
+            planned = []
+            for media_type, media_id, stored_path, folder in owned:
+                if folder == dest_folder:
+                    continue
+                next_path = rewrite_stored_path(stored_path, folder, dest_folder)
+                if next_path == stored_path:
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "message": "Mindestens eine Datei konnte nicht verschoben werden.",
+                            }
+                        ),
+                        400,
+                    )
+                planned.append(
+                    (media_type, media_id, stored_path, next_path)
+                )
+
+            if not planned:
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Die Dateien liegen schon in diesem Ordner.",
+                        }
+                    ),
+                    400,
+                )
+
+            for media_type, media_id, stored_path, next_path in planned:
+                step = relocate_media_file(stored_path, next_path)
+                if step is None:
+                    for done in reversed(moved_files):
+                        undo_relocate_media_file(done)
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "message": "Dateien konnten nicht verschoben werden.",
+                            }
+                        ),
+                        500,
+                    )
+                moved_files.append(step)
+
+            for media_type, media_id, stored_path, next_path in planned:
+                table = "photos" if media_type == "photo" else "videos"
+                cursor.execute(
+                    f"""
+                    UPDATE {table}
+                    SET folder = %s, stored_path = %s
+                    WHERE id = %s AND user_id = %s
+                    """,
+                    (dest_folder, next_path, media_id, user["id"]),
+                )
+                drop_media_caches(user["id"], media_type, media_id)
+
+        connection.commit()
+        return jsonify(
+            {
+                "status": "ok",
+                "moved": len(planned),
+                "folder": dest_folder,
+            }
+        )
+    except Exception:
+        for done in reversed(moved_files):
+            undo_relocate_media_file(done)
+        raise
     finally:
         connection.close()
 

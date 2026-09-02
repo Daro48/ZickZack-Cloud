@@ -269,6 +269,25 @@ export async function deleteMediaItems(items) {
   return data
 }
 
+export async function moveMediaItems(items, folder) {
+  const response = await fetch('/bp/media/move', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      folder,
+      items: items.map((item) => ({ type: item.type, id: item.id })),
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.message || 'Dateien konnten nicht verschoben werden.')
+  }
+  return data
+}
+
 export async function fetchWeekMedia(year, month, week) {
   const response = await fetch(
     `/bp/media?year=${year}&month=${month}&week=${week}`,
