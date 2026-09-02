@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderPicker } from '../components/FolderPicker.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
 import { MediaViewer } from '../components/MediaViewer.jsx'
+import { SelectionPopup } from '../components/SelectionPopup.jsx'
 import { ShareDialog } from '../components/ShareDialog.jsx'
 import { Topbar } from '../components/Topbar.jsx'
 import { mediaKey } from '../services/communityApi.js'
@@ -25,7 +26,6 @@ export function ViewContent({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [viewerIndex, setViewerIndex] = useState(null)
-  const [selecting, setSelecting] = useState(false)
   const [selectedKeys, setSelectedKeys] = useState(() => new Set())
   const [shareTarget, setShareTarget] = useState(null)
   const [shareNotice, setShareNotice] = useState('')
@@ -46,7 +46,6 @@ export function ViewContent({
     setError('')
     setIsLoading(false)
     setViewerIndex(null)
-    setSelecting(false)
     setSelectedKeys(new Set())
     setShareNotice('')
   }
@@ -128,13 +127,20 @@ export function ViewContent({
   function handleShared() {
     const count = shareTarget?.kind === 'folder' ? 0 : selectedItems.length
     setShareTarget(null)
-    setSelecting(false)
     setSelectedKeys(new Set())
     setShareNotice(
       shareTarget?.kind === 'folder'
         ? `Ordner ${selectedFolder} ist geteilt.`
         : `${count === 1 ? '1 Datei' : `${count} Dateien`} geteilt.`,
     )
+  }
+
+  function selectAllVisible() {
+    setSelectedKeys(new Set(items.map((item) => mediaKey(item))))
+  }
+
+  function clearSelection() {
+    setSelectedKeys(new Set())
   }
 
   useEffect(() => {
@@ -189,7 +195,7 @@ export function ViewContent({
         }
       />
 
-      <main className={`app-page${selectedFolder ? ' has-share-bar' : ''}`}>
+      <main className={`app-page${selectedItems.length > 0 ? ' has-selection-popup' : ''}`}>
         <header className="page-header">
           <div>
             <p className="eyebrow">Cloud</p>
@@ -203,6 +209,20 @@ export function ViewContent({
           onFolderChange={handleFolderChange}
           username={username}
         />
+
+        {selectedFolder && (
+          <section className="community-actions" aria-label="Teilen">
+            <button
+              className="secondary-button"
+              onClick={() =>
+                setShareTarget({ kind: 'folder', folder: selectedFolder })
+              }
+              type="button"
+            >
+              Ganzen Ordner teilen
+            </button>
+          </section>
+        )}
 
         {shareNotice && <p className="upload-ok share-notice">{shareNotice}</p>}
 
@@ -226,10 +246,8 @@ export function ViewContent({
                   item={item}
                   key={mediaKey(item)}
                   onOpen={() => setViewerIndex(index)}
-                  onToggleSelect={
-                    selecting ? () => toggleSelect(item) : undefined
-                  }
-                  selectable={selecting}
+                  onToggleSelect={() => toggleSelect(item)}
+                  selectable
                   selected={selectedKeys.has(mediaKey(item))}
                 />
               ))}
@@ -267,49 +285,14 @@ export function ViewContent({
         </section>
       </main>
 
-      {selectedFolder && (
-        <section className="share-action-bar" aria-label="Teilen">
-          <div className="share-actions">
-            <button
-              className="ghost-button"
-              onClick={() => {
-                setSelecting((current) => {
-                  if (current) {
-                    setSelectedKeys(new Set())
-                    return false
-                  }
-                  setViewerIndex(null)
-                  return true
-                })
-              }}
-              type="button"
-            >
-              {selecting ? 'Markieren beenden' : 'Dateien markieren'}
-            </button>
-            <button
-              className="secondary-button"
-              onClick={() =>
-                setShareTarget({ kind: 'folder', folder: selectedFolder })
-              }
-              type="button"
-            >
-              Ordner teilen
-            </button>
-            <button
-              className="primary-button"
-              disabled={!selecting || selectedItems.length === 0}
-              onClick={() =>
-                setShareTarget({ kind: 'items', items: selectedItems })
-              }
-              type="button"
-            >
-              {selectedItems.length > 0
-                ? `${selectedItems.length} teilen`
-                : 'Auswahl teilen'}
-            </button>
-          </div>
-        </section>
-      )}
+      <SelectionPopup
+        count={selectedItems.length}
+        onClear={clearSelection}
+        onSelectAll={items.length > 0 ? selectAllVisible : undefined}
+        onShare={() =>
+          setShareTarget({ kind: 'items', items: selectedItems })
+        }
+      />
 
       {viewerIndex !== null && items[viewerIndex] && (
         <MediaViewer

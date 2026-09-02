@@ -588,6 +588,7 @@ button.topbar-logo {
 }
 
 .app-page {
+  align-content: start;
   display: grid;
   gap: clamp(18px, 3vw, 28px);
   min-height: calc(100svh - var(--topbar-h));
@@ -1581,43 +1582,50 @@ button.topbar-logo {
 }
 
 .community-tabs {
-  background: rgba(20, 28, 24, 0.5);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  display: grid;
-  gap: 4px;
-  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  align-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  height: auto;
   justify-self: start;
   margin: 0 var(--page-pad);
-  max-width: 420px;
-  padding: 4px;
-  width: min(420px, calc(100% - (var(--page-pad) * 2)));
 }
 
 .community-tab {
+  align-self: center;
   background: transparent;
-  border: 0;
+  border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text-muted);
   cursor: pointer;
+  flex: 0 0 auto;
   font: inherit;
+  font-size: 0.78rem;
   font-weight: 700;
-  min-height: 42px;
-  padding: 8px 16px;
-  width: 100%;
+  height: auto;
+  line-height: 1;
+  min-height: 0;
+  padding: 8px 14px;
+}
+
+.community-tab:hover {
+  background: var(--mint-soft);
+  border-color: rgba(180, 255, 106, 0.5);
+  color: var(--acid-mint);
 }
 
 .community-tab.is-active {
   background: var(--acid-mint);
-  box-shadow: 0 6px 16px rgba(180, 255, 106, 0.18);
+  border-color: var(--acid-mint);
   color: var(--forest-graphite);
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .community-tab:hover:not(.is-active) {
-    background: var(--mint-soft);
-    color: var(--acid-mint);
-  }
+.community-tab.is-active:hover {
+  background: var(--acid-mint);
+  border-color: var(--acid-mint);
+  color: var(--forest-graphite);
+  filter: brightness(1.08);
 }
 
 .community-actions {
@@ -1627,6 +1635,57 @@ button.topbar-logo {
   max-width: 920px;
   width: calc(100% - (var(--page-pad) * 2));
   justify-self: center;
+}
+
+.community-actions .secondary-button {
+  justify-self: start;
+  margin: 0;
+  width: auto;
+}
+
+.selection-popup {
+  align-items: center;
+  backdrop-filter: blur(16px);
+  background: rgba(20, 28, 24, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  bottom: calc(16px + var(--safe-bottom));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.38);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  left: 50%;
+  max-width: min(560px, calc(100% - 24px));
+  padding: 12px 14px;
+  position: fixed;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 24px));
+  z-index: 30;
+}
+
+.selection-popup-count {
+  color: var(--acid-mint);
+  font-weight: 700;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.selection-popup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.selection-popup-actions .primary-button,
+.selection-popup-actions .ghost-button {
+  margin: 0;
+  min-height: 40px;
+  width: auto;
+}
+
+.app-page.has-selection-popup {
+  padding-bottom: calc(96px + var(--safe-bottom));
 }
 
 .community-toolbar {
@@ -1643,6 +1702,7 @@ button.topbar-logo {
 
 .community-toolbar-copy {
   display: grid;
+  flex: 1;
   gap: 2px;
   min-width: 0;
 }
@@ -1663,18 +1723,18 @@ button.topbar-logo {
 
 .share-grid {
   display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
 }
 
 .share-card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 14px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  padding: 10px;
+  padding: 8px;
 }
 
 .share-card-open {
@@ -1683,20 +1743,20 @@ button.topbar-logo {
   color: inherit;
   cursor: pointer;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding: 0;
   text-align: left;
   width: 100%;
 }
 
 .share-preview {
-  display: grid;
-  gap: 4px;
-  grid-template-columns: 1fr 1fr;
-  min-height: 120px;
-  overflow: hidden;
-  border-radius: 12px;
   background: #17201c;
+  border-radius: 10px;
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  height: 64px;
+  overflow: hidden;
 }
 
 .share-preview.count-0,
@@ -1704,10 +1764,14 @@ button.topbar-logo {
   grid-template-columns: 1fr;
 }
 
+.share-preview.count-2,
+.share-preview.count-3 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .share-preview-thumb {
-  aspect-ratio: 4 / 3;
   display: block;
-  height: 100%;
+  height: 64px;
   object-fit: cover;
   width: 100%;
 }
@@ -1716,9 +1780,10 @@ button.topbar-logo {
   align-items: center;
   color: var(--text-muted);
   display: flex;
+  font-size: 0.8rem;
   font-weight: 700;
+  height: 64px;
   justify-content: center;
-  min-height: 120px;
 }
 
 .share-card-meta {
@@ -1751,9 +1816,15 @@ button.topbar-logo {
 .share-delete {
   border-color: rgba(255, 143, 143, 0.32);
   color: var(--error);
+  font-size: 0.78rem;
   margin: 0;
-  min-height: 40px;
+  min-height: 30px;
+  padding: 4px 10px;
   width: 100%;
+}
+
+.community-toolbar .share-delete {
+  width: auto;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1875,12 +1946,6 @@ button.topbar-logo {
     flex: 1;
     min-width: 0;
     padding: 8px 10px;
-  }
-
-  .community-tabs {
-    justify-self: stretch;
-    max-width: none;
-    width: calc(100% - (var(--page-pad) * 2));
   }
 
   .folder-picker {
@@ -2146,6 +2211,41 @@ button.topbar-logo {
   .community-toolbar {
     align-items: start;
     flex-direction: column;
+  }
+
+  .community-toolbar .share-delete {
+    width: 100%;
+  }
+
+  .app-page.has-selection-popup {
+    padding-bottom: calc(128px + var(--safe-bottom));
+  }
+
+  .selection-popup {
+    align-items: stretch;
+    border-radius: 18px 18px 0 0;
+    bottom: 0;
+    flex-direction: column;
+    left: 0;
+    max-width: none;
+    padding: 12px var(--page-pad) calc(12px + var(--safe-bottom));
+    transform: none;
+    width: 100%;
+  }
+
+  .selection-popup-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .selection-popup-actions .primary-button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .selection-popup-actions .ghost-button {
+    width: 100%;
   }
 
   .app-page.has-share-bar {

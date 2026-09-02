@@ -2,7 +2,7 @@ export function Topbar({ action, username, center, onGoHome }) {
   const logo = (
     <>
       Cloud
-      <span className="topbar-version">Version 1.1.1</span>
+      <span className="topbar-version">Version 1.1.2</span>
     </>
   )
 

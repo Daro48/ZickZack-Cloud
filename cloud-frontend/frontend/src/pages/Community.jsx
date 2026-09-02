@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderPicker } from '../components/FolderPicker.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
 import { MediaViewer } from '../components/MediaViewer.jsx'
+import { SelectionPopup } from '../components/SelectionPopup.jsx'
 import { ShareDialog } from '../components/ShareDialog.jsx'
 import { Topbar } from '../components/Topbar.jsx'
 import {
@@ -480,7 +481,7 @@ export function Community({
 
       <main
         className={`app-page${
-          tab === 'share' && !activeShare ? ' has-share-bar' : ''
+          selectedItems.length > 0 ? ' has-selection-popup' : ''
         }`}
       >
         <header className="page-header">
@@ -513,6 +514,18 @@ export function Community({
                   {shareTotal !== null ? ` · ${shareTotal} Datei(en)` : ''}
                 </span>
               </div>
+              {activeShare.mine && (
+                <button
+                  className="ghost-button share-delete"
+                  disabled={deletingId === activeShare.id}
+                  onClick={() => handleDeleteShare(activeShare)}
+                  type="button"
+                >
+                  {deletingId === activeShare.id
+                    ? 'Wird beendet…'
+                    : 'Freigabe beenden'}
+                </button>
+              )}
             </section>
 
             <MediaPager
@@ -554,6 +567,41 @@ export function Community({
 
             {tab === 'share' && (
               <>
+                <section className="media-section" aria-label="Deine Freigaben">
+                  <div className="media-heading-row">
+                    <h2 className="media-heading">Deine Freigaben</h2>
+                    <p className="media-subheading">
+                      Verweise auf deine Originale, keine zweiten Kopien.
+                    </p>
+                  </div>
+                  {feedError && <p className="form-error">{feedError}</p>}
+                  {isFeedLoading ? (
+                    <div className="empty-panel">
+                      <p>Lädt…</p>
+                      <span>Deine Freigaben werden geladen.</span>
+                    </div>
+                  ) : outgoing.length === 0 ? (
+                    <div className="empty-panel">
+                      <p>Noch keine Freigaben.</p>
+                      <span>
+                        Markiere Dateien oder teile einen Ordner, danach die User.
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="share-grid">
+                      {outgoing.map((share) => (
+                        <ShareCard
+                          isDeleting={deletingId === share.id}
+                          key={share.id}
+                          onDelete={() => handleDeleteShare(share)}
+                          onOpen={() => openShare(share)}
+                          share={share}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+
                 <FolderPicker
                   allowCreate={false}
                   folder={selectedFolder}
@@ -564,64 +612,23 @@ export function Community({
                 <section className="community-actions" aria-label="Teilen">
                   <p className="folder-hint">
                     Dateien werden nur freigegeben, nicht kopiert. Markiere
-                    einzelne Fotos und Videos oder teile den ganzen Ordner.
-                    Danach wählst du die User.
+                    Fotos oder Videos — die Aktionen erscheinen unten.
                   </p>
+                  <button
+                    className="secondary-button"
+                    disabled={!selectedFolder}
+                    onClick={() =>
+                      setShareTarget({
+                        kind: 'folder',
+                        folder: selectedFolder,
+                      })
+                    }
+                    type="button"
+                  >
+                    Ganzen Ordner teilen
+                  </button>
                   {notice && <p className="form-success">{notice}</p>}
                 </section>
-
-                <div className="community-action-bar">
-                  <div className="community-action-row">
-                    <div className="community-action-group">
-                      <button
-                        className="ghost-button"
-                        disabled={!ownItems.length}
-                        onClick={selectAllVisible}
-                        type="button"
-                      >
-                        Alle markieren
-                      </button>
-                      <button
-                        className="ghost-button"
-                        disabled={selectedItems.length === 0}
-                        onClick={clearSelection}
-                        type="button"
-                      >
-                        Aufheben
-                      </button>
-                    </div>
-                    <div className="community-action-group is-share">
-                      <button
-                        className="secondary-button"
-                        disabled={!selectedFolder}
-                        onClick={() =>
-                          setShareTarget({
-                            kind: 'folder',
-                            folder: selectedFolder,
-                          })
-                        }
-                        type="button"
-                      >
-                        Ordner teilen
-                      </button>
-                      <button
-                        className="primary-button"
-                        disabled={selectedItems.length === 0}
-                        onClick={() =>
-                          setShareTarget({
-                            kind: 'items',
-                            items: selectedItems,
-                          })
-                        }
-                        type="button"
-                      >
-                        {selectedItems.length > 0
-                          ? `${selectedItems.length} teilen`
-                          : 'Auswahl teilen'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
 
                 {selectedFolder ? (
                   <MediaPager
@@ -685,41 +692,21 @@ export function Community({
                 )}
               </section>
             )}
-
-            {tab === 'share' && (
-              <section className="media-section" aria-label="Deine Freigaben">
-                <div className="media-heading-row">
-                  <h2 className="media-heading">Deine Freigaben</h2>
-                  <p className="media-subheading">
-                    Verweise auf deine Originale, keine zweiten Kopien.
-                  </p>
-                </div>
-                {feedError && <p className="form-error">{feedError}</p>}
-                {!isFeedLoading && outgoing.length === 0 ? (
-                  <div className="empty-panel">
-                    <p>Noch keine Freigaben.</p>
-                    <span>
-                      Markiere Dateien oder teile einen Ordner, danach die User.
-                    </span>
-                  </div>
-                ) : (
-                  <div className="share-grid">
-                    {outgoing.map((share) => (
-                      <ShareCard
-                        isDeleting={deletingId === share.id}
-                        key={share.id}
-                        onDelete={() => handleDeleteShare(share)}
-                        onOpen={() => openShare(share)}
-                        share={share}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
           </>
         )}
       </main>
+
+      <SelectionPopup
+        count={tab === 'share' && !activeShare ? selectedItems.length : 0}
+        onClear={clearSelection}
+        onSelectAll={ownItems.length > 0 ? selectAllVisible : undefined}
+        onShare={() =>
+          setShareTarget({
+            kind: 'items',
+            items: selectedItems,
+          })
+        }
+      />
 
       {viewerIndex !== null && viewerItems[viewerIndex] && (
         <MediaViewer
