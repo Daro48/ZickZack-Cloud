@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage.jsx'
 import { RecoveryCodePage } from './pages/RecoveryCodePage.jsx'
 import { RegisterPage } from './pages/RegisterPage.jsx'
 import { ResetPasswordPage } from './pages/ResetPasswordPage.jsx'
+import { PublicSharePage } from './pages/PublicSharePage.jsx'
 import {
   getCurrentUser,
   loginUser,
@@ -15,19 +16,23 @@ import {
   registerUser,
   resetPassword,
 } from './services/authApi.js'
+import {
+  APP_PAGES,
+  AUTH_PAGES,
+  PAGE_TITLES,
+  parseLocation,
+  pathForPage,
+} from './utils/paths.js'
+import { applyTheme, getStoredTheme } from './utils/theme.js'
 
-const PAGE_TITLES = {
-  login: 'Anmelden',
-  register: 'Registrieren',
-  'reset-password': 'Passwort zurücksetzen',
-  'recovery-code': 'Wiederherstellungscode',
-  home: 'Upload',
-  content: 'Inhalte',
-  community: 'Community',
-}
+applyTheme(getStoredTheme())
 
 function App() {
-  const [page, setPage] = useState('login')
+  const initialLocation = parseLocation(window.location.pathname)
+  const [page, setPage] = useState(
+    initialLocation.page === 'unknown' ? 'login' : initialLocation.page,
+  )
+  const [publicToken, setPublicToken] = useState(initialLocation.token || '')
   const [user, setUser] = useState(null)
   const [authError, setAuthError] = useState('')
   const [authNotice, setAuthNotice] = useState('')
@@ -36,9 +41,51 @@ function App() {
   const [recoveryCode, setRecoveryCode] = useState('')
   const [seenPages, setSeenPages] = useState({
     home: true,
-    content: false,
-    community: false,
+    content: initialLocation.page === 'content',
+    community: initialLocation.page === 'community',
   })
+
+  function syncHistory(nextPage, { replace = false, token = '' } = {}) {
+    const path = pathForPage(nextPage, token)
+    const current = `${window.location.pathname}`
+    if (current === path) {
+      return
+    }
+    if (replace) {
+      window.history.replaceState({ page: nextPage, token }, '', path)
+    } else {
+      window.history.pushState({ page: nextPage, token }, '', path)
+    }
+  }
+
+  function openPage(nextPage, options = {}) {
+    const token = options.token || ''
+    setSeenPages((current) =>
+      nextPage in current ? { ...current, [nextPage]: true } : current,
+    )
+    setPage(nextPage)
+    if (nextPage === 'public-share') {
+      setPublicToken(token)
+    }
+    syncHistory(nextPage, { replace: options.replace, token })
+  }
+
+  useEffect(() => {
+    function handlePopState() {
+      const next = parseLocation(window.location.pathname)
+      if (next.page === 'unknown') {
+        return
+      }
+      setSeenPages((current) =>
+        next.page in current ? { ...current, [next.page]: true } : current,
+      )
+      setPage(next.page)
+      setPublicToken(next.token || '')
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -46,15 +93,39 @@ function App() {
     async function checkSession() {
       try {
         const data = await getCurrentUser()
-
-        if (isMounted) {
-          setUser(data.user)
-          setPage('home')
+        if (!isMounted) {
+          return
+        }
+        setUser(data.user)
+        const current = parseLocation(window.location.pathname)
+        if (current.page === 'public-share') {
+          setPage('public-share')
+          setPublicToken(current.token || '')
+        } else if (current.page === 'recovery-code' && recoveryCode) {
+          setPage('recovery-code')
+        } else if (APP_PAGES.has(current.page)) {
+          setSeenPages((seen) =>
+            current.page in seen ? { ...seen, [current.page]: true } : seen,
+          )
+          setPage(current.page)
+          syncHistory(current.page, { replace: true })
+        } else {
+          openPage('home', { replace: true })
         }
       } catch {
-        if (isMounted) {
-          setUser(null)
-          setPage('login')
+        if (!isMounted) {
+          return
+        }
+        setUser(null)
+        const current = parseLocation(window.location.pathname)
+        if (current.page === 'public-share') {
+          setPage('public-share')
+          setPublicToken(current.token || '')
+        } else if (AUTH_PAGES.has(current.page) && current.page !== 'recovery-code') {
+          setPage(current.page)
+          syncHistory(current.page, { replace: true })
+        } else {
+          openPage('login', { replace: true })
         }
       } finally {
         if (isMounted) {
@@ -75,13 +146,6 @@ function App() {
     document.title = label ? `${label} · Cloud` : 'Cloud'
   }, [page])
 
-  function openPage(nextPage) {
-    setSeenPages((current) =>
-      nextPage in current ? { ...current, [nextPage]: true } : current,
-    )
-    setPage(nextPage)
-  }
-
   async function handleLogin({ username, password }) {
     setIsSubmitting(true)
     setAuthError('')
@@ -90,7 +154,7 @@ function App() {
     try {
       const data = await loginUser({ username, password })
       setUser(data.user || { username })
-      setPage('home')
+      openPage('home')
     } catch (error) {
       setAuthError(error.message)
     } finally {
@@ -108,7 +172,7 @@ function App() {
       const data = await loginUser({ username, password })
       setUser(data.user || { username })
       setRecoveryCode(registerData.recovery_code || '')
-      setPage(registerData.recovery_code ? 'recovery-code' : 'home')
+      openPage(registerData.recovery_code ? 'recovery-code' : 'home')
     } catch (error) {
       setAuthError(error.message)
     } finally {
@@ -124,7 +188,7 @@ function App() {
     try {
       await resetPassword({ username, recoveryCode: code, password })
       setAuthNotice('Passwort gespeichert. Du kannst dich jetzt anmelden.')
-      setPage('login')
+      openPage('login')
     } catch (error) {
       setAuthError(error.message)
     } finally {
@@ -140,26 +204,26 @@ function App() {
       setAuthError('')
       setAuthNotice('')
       setSeenPages({ home: true, content: false, community: false })
-      setPage('login')
+      openPage('login')
     }
   }
 
   function showLogin() {
     setAuthError('')
     setAuthNotice('')
-    setPage('login')
+    openPage('login')
   }
 
   function showRegister() {
     setAuthError('')
     setAuthNotice('')
-    setPage('register')
+    openPage('register')
   }
 
   function showResetPassword() {
     setAuthError('')
     setAuthNotice('')
-    setPage('reset-password')
+    openPage('reset-password')
   }
 
   if (isCheckingSession) {
@@ -174,6 +238,15 @@ function App() {
     )
   }
 
+  if (page === 'public-share' && publicToken) {
+    return (
+      <PublicSharePage
+        token={publicToken}
+        onGoLogin={user ? () => openPage('home') : showLogin}
+      />
+    )
+  }
+
   if (page === 'recovery-code' && user && recoveryCode) {
     return (
       <AuthLayout>
@@ -181,7 +254,7 @@ function App() {
           recoveryCode={recoveryCode}
           onContinue={() => {
             setRecoveryCode('')
-            setPage('home')
+            openPage('home')
           }}
         />
       </AuthLayout>

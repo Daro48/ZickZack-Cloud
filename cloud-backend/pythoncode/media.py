@@ -1,4 +1,5 @@
 import os
+import shutil
 import threading
 from calendar import monthrange
 from collections import OrderedDict
@@ -9,15 +10,24 @@ from database import get_database_connection
 from upload import (
     MEDIA_ROOT,
     create_media_thumbnail,
+    list_user_folders,
     require_user,
     sanitize_folder_name,
     thumb_relative_path,
+    user_media_root,
 )
 
 media_bp = Blueprint("media", __name__)
 
 MEDIA_CACHE_SECONDS = 31536000
 MAX_FOLDER_PAGE_SIZE = 500
+MAX_DELETE_ITEMS = 500
+STORAGE_QUOTA_BYTES = int(os.getenv("STORAGE_QUOTA_BYTES", str(10 * 1024 * 1024 * 1024)))
+FOLDER_SORTS = {
+    "newest": ("created_at DESC, type ASC, id DESC", "created_at DESC, id DESC"),
+    "oldest": ("created_at ASC, type ASC, id ASC", "created_at ASC, id ASC"),
+    "name": ("original_name ASC, created_at DESC, id DESC", "original_name ASC, id DESC"),
+}
 MEDIA_META_CACHE_MAX = int(os.getenv("MEDIA_META_CACHE_MAX", "50000"))
 ON_DEMAND_THUMB_WORKERS = int(os.getenv("ON_DEMAND_THUMB_WORKERS", "3"))
 ON_DEMAND_THUMB_WAIT_SECONDS = float(os.getenv("ON_DEMAND_THUMB_WAIT", "5"))
@@ -37,6 +47,26 @@ _thumb_cache_bytes = 0
 _thumb_cache_lock = threading.Lock()
 
 _thumb_slots = threading.BoundedSemaphore(max(1, ON_DEMAND_THUMB_WORKERS))
+
+
+def drop_media_meta(user_id, media_type, media_id):
+    key = (user_id, media_type, media_id)
+    with _media_meta_lock:
+        _media_meta_cache.pop(key, None)
+
+
+def drop_thumb_cache(user_id, media_type, media_id):
+    global _thumb_cache_bytes
+    key = (user_id, media_type, media_id)
+    with _thumb_cache_lock:
+        entry = _thumb_cache.pop(key, None)
+        if entry is not None:
+            _thumb_cache_bytes -= len(entry["payload"])
+
+
+def drop_media_caches(user_id, media_type, media_id):
+    drop_media_meta(user_id, media_type, media_id)
+    drop_thumb_cache(user_id, media_type, media_id)
 
 
 def cache_media_meta(user_id, media_type, media_id, meta):
@@ -139,13 +169,13 @@ def apply_media_cache_headers(response):
     return response
 
 
-def send_media_file(path, mimetype, download_name=None):
+def send_media_file(path, mimetype, download_name=None, as_attachment=False):
     """Streamt die Datei, oder gibt None zurück wenn sie fehlt."""
     try:
         response = send_file(
             path,
             mimetype=mimetype,
-            as_attachment=False,
+            as_attachment=as_attachment,
             download_name=download_name,
             conditional=True,
             max_age=MEDIA_CACHE_SECONDS,
@@ -210,23 +240,32 @@ def send_thumb_entry(entry):
     return response.make_conditional(request)
 
 
-def serialize_item(row):
+def serialize_item(row, url_prefix=None):
     created_at = row["created_at"]
+    media_type = row["type"]
+    media_id = row["id"]
+    if url_prefix:
+        file_url = f"{url_prefix}/file/{media_type}/{media_id}"
+        thumb_url = f"{url_prefix}/thumb/{media_type}/{media_id}"
+    else:
+        file_url = f"/bp/media/file/{media_type}/{media_id}"
+        thumb_url = f"/bp/media/thumb/{media_type}/{media_id}"
     return {
-        "id": row["id"],
-        "type": row["type"],
+        "id": media_id,
+        "type": media_type,
         "original_name": row["original_name"],
         "mime_type": row["mime_type"],
         "size_bytes": row["size_bytes"],
         "created_at": created_at.isoformat(sep=" ", timespec="seconds")
         if created_at
         else None,
-        "url": f"/bp/media/file/{row['type']}/{row['id']}",
-        "thumb_url": f"/bp/media/thumb/{row['type']}/{row['id']}",
+        "url": file_url,
+        "thumb_url": thumb_url,
+        "download_url": f"{file_url}?download=1",
     }
 
 
-def serialize_and_prime(rows, user_id):
+def serialize_and_prime(rows, user_id, url_prefix=None):
     """Füllt den Metadaten-Cache mit, damit die folgenden Bild-Requests der
     Galerie ohne eigene Datenbankabfrage auskommen."""
     items = []
@@ -241,7 +280,7 @@ def serialize_and_prime(rows, user_id):
                 "original_name": row["original_name"],
             },
         )
-        items.append(serialize_item(row))
+        items.append(serialize_item(row, url_prefix=url_prefix))
     return items
 
 
@@ -264,6 +303,30 @@ def parse_positive_int(value):
     if number < 1:
         return None
     return number
+
+
+def parse_media_type_filter(value):
+    if value in ("photo", "video"):
+        return value
+    return None
+
+
+def parse_folder_sort(value):
+    if value in FOLDER_SORTS:
+        return value
+    return "newest"
+
+
+def name_search_clause(raw_query):
+    query = str(raw_query or "").strip()
+    if not query:
+        return "", []
+    escaped = (
+        query.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+    return " AND original_name LIKE %s ESCAPE '\\\\'", [f"%{escaped}%"]
 
 
 def parse_non_negative_int(value, default=0):
@@ -350,33 +413,76 @@ def list_media_for_week():
         connection.close()
 
 
-def count_folder_items(cursor, user_id, folder_name):
-    cursor.execute(
-        """
-        SELECT
-            (
-                SELECT COUNT(*)
-                FROM photos
-                WHERE user_id = %s AND folder = %s
-            ) + (
-                SELECT COUNT(*)
-                FROM videos
-                WHERE user_id = %s AND folder = %s
-            ) AS total
-        """,
-        (user_id, folder_name, user_id, folder_name),
-    )
-    return int((cursor.fetchone() or {}).get("total") or 0)
+def count_folder_items(cursor, user_id, folder_name, media_type=None, query=None):
+    extra_sql, extra_params = name_search_clause(query)
+    tables = []
+    if media_type != "video":
+        tables.append("photos")
+    if media_type != "photo":
+        tables.append("videos")
+
+    total = 0
+    for table in tables:
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) AS total
+            FROM {table}
+            WHERE user_id = %s AND folder = %s{extra_sql}
+            """,
+            (user_id, folder_name, *extra_params),
+        )
+        total += int((cursor.fetchone() or {}).get("total") or 0)
+    return total
 
 
-def fetch_folder_page(cursor, user_id, folder_name, offset, limit):
+def fetch_folder_page(
+    cursor,
+    user_id,
+    folder_name,
+    offset,
+    limit,
+    media_type=None,
+    query=None,
+    sort="newest",
+):
     # Ein Element mehr holen als ausgeliefert wird, das ersetzt eine COUNT-Abfrage
     # für has_more.
     probe_limit = limit + 1
     branch_limit = offset + probe_limit
+    extra_sql, extra_params = name_search_clause(query)
+    outer_order, branch_order = FOLDER_SORTS.get(sort, FOLDER_SORTS["newest"])
+
+    branches = []
+    params = []
+    wanted = []
+    if media_type != "video":
+        wanted.append(("photos", "photo"))
+    if media_type != "photo":
+        wanted.append(("videos", "video"))
+
+    for table, type_label in wanted:
+        branches.append(
+            f"""
+            (
+                SELECT
+                    id,
+                    '{type_label}' AS type,
+                    original_name,
+                    stored_path,
+                    mime_type,
+                    size_bytes,
+                    created_at
+                FROM {table}
+                WHERE user_id = %s AND folder = %s{extra_sql}
+                ORDER BY {branch_order}
+                LIMIT %s
+            )
+            """
+        )
+        params.extend((user_id, folder_name, *extra_params, branch_limit))
 
     cursor.execute(
-        """
+        f"""
         SELECT
             id,
             type,
@@ -386,49 +492,12 @@ def fetch_folder_page(cursor, user_id, folder_name, offset, limit):
             size_bytes,
             created_at
         FROM (
-            (
-                SELECT
-                    id,
-                    'photo' AS type,
-                    original_name,
-                    stored_path,
-                    mime_type,
-                    size_bytes,
-                    created_at
-                FROM photos
-                WHERE user_id = %s AND folder = %s
-                ORDER BY created_at DESC, id DESC
-                LIMIT %s
-            )
-            UNION ALL
-            (
-                SELECT
-                    id,
-                    'video' AS type,
-                    original_name,
-                    stored_path,
-                    mime_type,
-                    size_bytes,
-                    created_at
-                FROM videos
-                WHERE user_id = %s AND folder = %s
-                ORDER BY created_at DESC, id DESC
-                LIMIT %s
-            )
+            {" UNION ALL ".join(branches)}
         ) AS media
-        ORDER BY created_at DESC, type ASC, id DESC
+        ORDER BY {outer_order}
         LIMIT %s OFFSET %s
         """,
-        (
-            user_id,
-            folder_name,
-            branch_limit,
-            user_id,
-            folder_name,
-            branch_limit,
-            probe_limit,
-            offset,
-        ),
+        (*params, probe_limit, offset),
     )
     rows = cursor.fetchall()
     has_more = len(rows) > limit
@@ -452,6 +521,9 @@ def list_media_for_folder():
     offset = parse_non_negative_int(request.args.get("offset"), 0)
     limit = parse_positive_int(request.args.get("limit")) or 50
     limit = min(limit, MAX_FOLDER_PAGE_SIZE)
+    media_type = parse_media_type_filter(request.args.get("type"))
+    query = request.args.get("q") or request.args.get("query")
+    sort = parse_folder_sort(request.args.get("sort"))
 
     connection = get_database_connection()
     try:
@@ -461,10 +533,23 @@ def list_media_for_folder():
 
         with connection.cursor() as cursor:
             rows, has_more = fetch_folder_page(
-                cursor, user["id"], folder_name, offset, limit
+                cursor,
+                user["id"],
+                folder_name,
+                offset,
+                limit,
+                media_type=media_type,
+                query=query,
+                sort=sort,
             )
             total = (
-                count_folder_items(cursor, user["id"], folder_name)
+                count_folder_items(
+                    cursor,
+                    user["id"],
+                    folder_name,
+                    media_type=media_type,
+                    query=query,
+                )
                 if offset == 0
                 else None
             )
@@ -475,6 +560,9 @@ def list_media_for_folder():
                 "folder": folder_name,
                 "offset": offset,
                 "limit": limit,
+                "type": media_type or "all",
+                "query": str(query or "").strip(),
+                "sort": sort,
                 "total": total,
                 "has_more": has_more,
                 "items": serialize_and_prime(rows, user["id"]),
@@ -509,6 +597,7 @@ def get_media_file(media_type, media_id):
         absolute_path,
         meta["mime_type"],
         download_name=meta["original_name"],
+        as_attachment=request.args.get("download") == "1",
     )
     if response is None:
         return jsonify({"status": "error", "message": "Datei fehlt."}), 404
@@ -583,3 +672,362 @@ def get_media_thumbnail(media_type, media_id):
 
     store_thumb_entry(cache_key, entry)
     return send_thumb_entry(entry)
+
+
+def unlink_media_files(stored_path):
+    absolute_path = media_path(stored_path)
+    if absolute_path is not None:
+        absolute_path.unlink(missing_ok=True)
+    thumb_path = media_path(thumb_relative_path(stored_path))
+    if thumb_path is not None:
+        thumb_path.unlink(missing_ok=True)
+
+
+def used_storage_bytes(cursor, user_id):
+    cursor.execute(
+        """
+        SELECT
+            (
+                SELECT COALESCE(SUM(size_bytes), 0)
+                FROM photos
+                WHERE user_id = %s
+            ) + (
+                SELECT COALESCE(SUM(size_bytes), 0)
+                FROM videos
+                WHERE user_id = %s
+            ) AS used
+        """,
+        (user_id, user_id),
+    )
+    return int((cursor.fetchone() or {}).get("used") or 0)
+
+
+def collect_owned_media(cursor, user_id, raw_items):
+    wanted_photos = set()
+    wanted_videos = set()
+    for entry in raw_items or []:
+        if not isinstance(entry, dict):
+            continue
+        media_type = entry.get("type")
+        try:
+            media_id = int(entry.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if media_id < 1:
+            continue
+        if media_type == "photo":
+            wanted_photos.add(media_id)
+        elif media_type == "video":
+            wanted_videos.add(media_id)
+
+    owned = []
+    if wanted_photos:
+        placeholders = ", ".join(["%s"] * len(wanted_photos))
+        cursor.execute(
+            f"""
+            SELECT id, stored_path
+            FROM photos
+            WHERE user_id = %s AND id IN ({placeholders})
+            """,
+            (user_id, *wanted_photos),
+        )
+        found = cursor.fetchall()
+        if {row["id"] for row in found} != wanted_photos:
+            return None
+        owned.extend(("photo", row["id"], row["stored_path"]) for row in found)
+    if wanted_videos:
+        placeholders = ", ".join(["%s"] * len(wanted_videos))
+        cursor.execute(
+            f"""
+            SELECT id, stored_path
+            FROM videos
+            WHERE user_id = %s AND id IN ({placeholders})
+            """,
+            (user_id, *wanted_videos),
+        )
+        found = cursor.fetchall()
+        if {row["id"] for row in found} != wanted_videos:
+            return None
+        owned.extend(("video", row["id"], row["stored_path"]) for row in found)
+    return owned
+
+
+def delete_owned_media(cursor, user_id, owned):
+    paths = []
+    for media_type, media_id, stored_path in owned:
+        table = "photos" if media_type == "photo" else "videos"
+        cursor.execute(
+            f"DELETE FROM {table} WHERE id = %s AND user_id = %s",
+            (media_id, user_id),
+        )
+        cursor.execute(
+            """
+            DELETE FROM share_items
+            WHERE media_type = %s AND media_id = %s
+            """,
+            (media_type, media_id),
+        )
+        drop_media_caches(user_id, media_type, media_id)
+        paths.append(stored_path)
+    return paths
+
+
+def rewrite_stored_path(stored_path, old_folder, new_folder):
+    parts = str(stored_path).replace("\\", "/").split("/")
+    if len(parts) >= 2 and parts[1] == old_folder:
+        parts[1] = new_folder
+        return "/".join(parts)
+    return stored_path
+
+
+@media_bp.get("/bp/media/storage")
+def get_storage():
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        with connection.cursor() as cursor:
+            used = used_storage_bytes(cursor, user["id"])
+
+        quota = STORAGE_QUOTA_BYTES
+        return jsonify(
+            {
+                "status": "ok",
+                "used_bytes": used,
+                "quota_bytes": quota,
+                "free_bytes": max(0, quota - used) if quota > 0 else None,
+            }
+        )
+    finally:
+        connection.close()
+
+
+@media_bp.delete("/bp/media/file/<media_type>/<int:media_id>")
+def delete_media_file(media_type, media_id):
+    if media_type not in ("photo", "video"):
+        return jsonify({"status": "error", "message": "Ungültiger Typ."}), 400
+
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        with connection.cursor() as cursor:
+            owned = collect_owned_media(
+                cursor, user["id"], [{"type": media_type, "id": media_id}]
+            )
+            if not owned:
+                return jsonify({"status": "error", "message": "Nicht gefunden."}), 404
+            paths = delete_owned_media(cursor, user["id"], owned)
+
+        connection.commit()
+        for stored_path in paths:
+            unlink_media_files(stored_path)
+        return jsonify({"status": "ok", "deleted": 1})
+    finally:
+        connection.close()
+
+
+@media_bp.post("/bp/media/delete")
+def delete_media_items():
+    data = request.get_json(silent=True) or {}
+    raw_items = data.get("items") or []
+    if not raw_items:
+        return jsonify({"status": "error", "message": "Keine Dateien gewählt."}), 400
+    if len(raw_items) > MAX_DELETE_ITEMS:
+        return (
+            jsonify({"status": "error", "message": "Zu viele Dateien auf einmal."}),
+            400,
+        )
+
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        with connection.cursor() as cursor:
+            owned = collect_owned_media(cursor, user["id"], raw_items)
+            if owned is None:
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Mindestens eine Datei gehört dir nicht.",
+                        }
+                    ),
+                    400,
+                )
+            if not owned:
+                return (
+                    jsonify({"status": "error", "message": "Keine Dateien gewählt."}),
+                    400,
+                )
+            paths = delete_owned_media(cursor, user["id"], owned)
+
+        connection.commit()
+        for stored_path in paths:
+            unlink_media_files(stored_path)
+        return jsonify({"status": "ok", "deleted": len(owned)})
+    finally:
+        connection.close()
+
+
+@media_bp.patch("/bp/media/folders")
+def rename_folder():
+    data = request.get_json(silent=True) or {}
+    old_name = sanitize_folder_name(data.get("folder") or data.get("old_folder"))
+    new_name = sanitize_folder_name(data.get("new_folder") or data.get("name"))
+    if not old_name or not new_name:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Ungültiger Ordnername. Erlaubt: Buchstaben, Zahlen, Leerzeichen, - und _.",
+                }
+            ),
+            400,
+        )
+    if old_name == new_name:
+        return jsonify({"status": "ok", "folder": new_name})
+
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        root = user_media_root(user["username"])
+        if root is None:
+            return jsonify({"status": "error", "message": "Nicht gefunden."}), 404
+
+        old_path = root / old_name
+        new_path = root / new_name
+        if not old_path.is_dir():
+            return jsonify({"status": "error", "message": "Ordner nicht gefunden."}), 404
+        if new_path.exists():
+            return (
+                jsonify({"status": "error", "message": "Dieser Ordner existiert schon."}),
+                409,
+            )
+
+        with connection.cursor() as cursor:
+            for table in ("photos", "videos"):
+                cursor.execute(
+                    f"""
+                    SELECT id, stored_path
+                    FROM {table}
+                    WHERE user_id = %s AND folder = %s
+                    """,
+                    (user["id"], old_name),
+                )
+                rows = cursor.fetchall()
+                media_type = "photo" if table == "photos" else "video"
+                for row in rows:
+                    next_path = rewrite_stored_path(
+                        row["stored_path"], old_name, new_name
+                    )
+                    cursor.execute(
+                        f"""
+                        UPDATE {table}
+                        SET folder = %s, stored_path = %s
+                        WHERE id = %s AND user_id = %s
+                        """,
+                        (new_name, next_path, row["id"], user["id"]),
+                    )
+                    drop_media_caches(user["id"], media_type, row["id"])
+
+            cursor.execute(
+                """
+                UPDATE shares
+                SET folder = %s
+                WHERE owner_id = %s AND kind = 'folder' AND folder = %s
+                """,
+                (new_name, user["id"], old_name),
+            )
+
+        try:
+            old_path.rename(new_path)
+        except OSError:
+            connection.rollback()
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Ordner konnte nicht umbenannt werden.",
+                    }
+                ),
+                500,
+            )
+
+        connection.commit()
+        return jsonify(
+            {
+                "status": "ok",
+                "folder": new_name,
+                "folders": list_user_folders(user["username"]),
+            }
+        )
+    finally:
+        connection.close()
+
+
+@media_bp.delete("/bp/media/folders")
+def delete_folder():
+    folder_name = sanitize_folder_name(
+        request.args.get("folder") or (request.get_json(silent=True) or {}).get("folder")
+    )
+    if not folder_name:
+        return jsonify({"status": "error", "message": "Bitte einen Ordner wählen."}), 400
+
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        root = user_media_root(user["username"])
+        folder_path = (root / folder_name) if root is not None else None
+        if folder_path is None or not folder_path.is_dir():
+            return jsonify({"status": "error", "message": "Ordner nicht gefunden."}), 404
+
+        with connection.cursor() as cursor:
+            owned = []
+            for table, media_type in (("photos", "photo"), ("videos", "video")):
+                cursor.execute(
+                    f"""
+                    SELECT id, stored_path
+                    FROM {table}
+                    WHERE user_id = %s AND folder = %s
+                    """,
+                    (user["id"], folder_name),
+                )
+                owned.extend(
+                    (media_type, row["id"], row["stored_path"])
+                    for row in cursor.fetchall()
+                )
+            delete_owned_media(cursor, user["id"], owned)
+            cursor.execute(
+                """
+                DELETE FROM shares
+                WHERE owner_id = %s AND kind = 'folder' AND folder = %s
+                """,
+                (user["id"], folder_name),
+            )
+
+        connection.commit()
+        for stored_path in [row[2] for row in owned]:
+            unlink_media_files(stored_path)
+        shutil.rmtree(folder_path, ignore_errors=True)
+        return jsonify(
+            {
+                "status": "ok",
+                "folders": list_user_folders(user["username"]),
+            }
+        )
+    finally:
+        connection.close()
+

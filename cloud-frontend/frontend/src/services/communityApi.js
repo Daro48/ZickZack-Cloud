@@ -55,3 +55,52 @@ export async function deleteShare(shareId) {
   })
   return readJson(response, 'Freigabe konnte nicht beendet werden.')
 }
+
+export async function leaveShare(shareId) {
+  const response = await fetch(`/bp/community/shares/${shareId}/leave`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  return readJson(response, 'Freigabe konnte nicht verlassen werden.')
+}
+
+export async function createShareLink(shareId, days = 7) {
+  const response = await fetch(`/bp/community/shares/${shareId}/link`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ days }),
+  })
+  return readJson(response, 'Link konnte nicht erstellt werden.')
+}
+
+export async function fetchNotifications() {
+  const response = await fetch('/bp/community/notifications', {
+    credentials: 'include',
+  })
+  return readJson(response, 'Benachrichtigungen konnten nicht geladen werden.')
+}
+
+export async function markNotificationsRead() {
+  const response = await fetch('/bp/community/notifications/read', {
+    method: 'POST',
+    credentials: 'include',
+  })
+  return readJson(response, 'Benachrichtigungen konnten nicht gelesen werden.')
+}
+
+export async function fetchPublicShare(token) {
+  const response = await fetch(`/bp/public/${token}`)
+  return readJson(response, 'Diese Freigabe ist nicht verfügbar.')
+}
+
+export async function fetchPublicShareMedia(token, { offset = 0, limit = 200 } = {}) {
+  const params = new URLSearchParams({
+    offset: String(offset),
+    limit: String(limit),
+  })
+  const response = await fetch(`/bp/public/${token}/media?${params.toString()}`)
+  return readJson(response, 'Geteilte Inhalte konnten nicht geladen werden.')
+}

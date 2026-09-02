@@ -1,21 +1,10 @@
 import { useMemo, useRef, useState } from 'react'
+import { AppNav } from '../components/AppNav.jsx'
 import { FolderPicker } from '../components/FolderPicker.jsx'
 import { Topbar } from '../components/Topbar.jsx'
 import { uploadMedia } from '../services/mediaApi.js'
+import { formatBytes } from '../utils/format.js'
 import { isAllowedMediaFile } from '../utils/mediaTypes.js'
-
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes < 0) {
-    return '—'
-  }
-  if (bytes < 1024) {
-    return `${bytes} B`
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 function createQueueItem(file) {
   const uid =
@@ -45,6 +34,7 @@ function collectFilesFromDataTransfer(dataTransfer) {
 
 export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommunity }) {
   const fileInputRef = useRef(null)
+  const cameraInputRef = useRef(null)
   const [selectedFolder, setSelectedFolder] = useState('')
   const [queue, setQueue] = useState([])
   const [isDragging, setIsDragging] = useState(false)
@@ -120,6 +110,13 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
       return
     }
     fileInputRef.current?.click()
+  }
+
+  function openCameraPicker() {
+    if (isUploading) {
+      return
+    }
+    cameraInputRef.current?.click()
   }
 
   function handleFilesSelected(event) {
@@ -303,26 +300,13 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
       <Topbar
         username={username}
         onGoHome={onGoHome}
+        onGoCommunity={onGoCommunity}
         center={
-          <nav className="topbar-nav" aria-label="Hauptnavigation">
-            <button className="nav-link is-active" type="button">
-              Upload
-            </button>
-            <button
-              className="nav-link"
-              onClick={onGoContent}
-              type="button"
-            >
-              Inhalte
-            </button>
-            <button
-              className="nav-link"
-              onClick={onGoCommunity}
-              type="button"
-            >
-              Community
-            </button>
-          </nav>
+          <AppNav current="home" onNavigate={(page) => {
+            if (page === 'content') onGoContent()
+            if (page === 'community') onGoCommunity()
+            if (page === 'home') onGoHome()
+          }} />
         }
         action={
           <button className="secondary-button" type="button" onClick={onLogout}>
@@ -394,6 +378,14 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
             onChange={handleFilesSelected}
             type="file"
           />
+          <input
+            ref={cameraInputRef}
+            accept="image/*,video/*"
+            capture="environment"
+            className="upload-input"
+            onChange={handleFilesSelected}
+            type="file"
+          />
 
           <button
             className={`dropzone${isDragging ? ' is-dragging' : ''}${isUploading ? ' is-disabled' : ''}`}
@@ -411,6 +403,15 @@ export function HomePage({ username, onLogout, onGoHome, onGoContent, onGoCommun
             <span className="dropzone-copy">
               Fotos und Videos. Anschließend den Upload starten.
             </span>
+          </button>
+
+          <button
+            className="secondary-button camera-button"
+            disabled={isUploading}
+            onClick={openCameraPicker}
+            type="button"
+          >
+            Kamera
           </button>
 
           {summary && counts.total === 0 && (

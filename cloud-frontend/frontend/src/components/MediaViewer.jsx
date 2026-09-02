@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom'
 
 const SWIPE_THRESHOLD = 56
 
-export function MediaViewer({ items, index, onClose, onIndexChange }) {
+export function MediaViewer({ items, index, onClose, onIndexChange, onDelete }) {
   const touchRef = useRef({ x: 0, y: 0, tracking: false })
   const item = items[index]
   const isPhoto = item?.type === 'photo'
   const hasPrev = index > 0
   const hasNext = index < items.length - 1
+  const downloadUrl = item?.download_url || `${item?.url || ''}?download=1`
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -101,15 +102,35 @@ export function MediaViewer({ items, index, onClose, onIndexChange }) {
           <span>{isPhoto ? 'Foto' : 'Video'}</span>
           <strong>{item.original_name}</strong>
         </div>
-        <button
-          aria-label="Schließen"
-          autoFocus
-          className="media-viewer-close"
-          onClick={onClose}
-          type="button"
-        >
-          Schließen
-        </button>
+        <div className="media-viewer-actions">
+          {item.url && (
+            <a
+              className="media-viewer-close"
+              download={item.original_name}
+              href={downloadUrl}
+            >
+              Download
+            </a>
+          )}
+          {onDelete && (
+            <button
+              className="danger-button"
+              onClick={() => onDelete(item)}
+              type="button"
+            >
+              Datei löschen
+            </button>
+          )}
+          <button
+            aria-label="Schließen"
+            autoFocus
+            className="media-viewer-close"
+            onClick={onClose}
+            type="button"
+          >
+            Schließen
+          </button>
+        </div>
       </div>
 
       <div className="media-viewer-stage">

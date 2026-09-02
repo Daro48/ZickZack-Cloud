@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { PasswordField } from '../components/PasswordField.jsx'
 
 export function ResetPasswordPage({ error, notice, isSubmitting, onResetPassword, onShowLogin }) {
   const [username, setUsername] = useState('')
   const [recoveryCode, setRecoveryCode] = useState('')
   const [password, setPassword] = useState('')
   const [passwordRepeat, setPasswordRepeat] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [localError, setLocalError] = useState('')
 
   function handleSubmit(event) {
@@ -60,29 +62,31 @@ export function ResetPasswordPage({ error, notice, isSubmitting, onResetPassword
 
       <label>
         Neues Passwort
-        <input
+        <PasswordField
           autoComplete="new-password"
+          minLength={6}
           name="password"
           onChange={(event) => setPassword(event.target.value)}
+          onToggleVisible={() => setShowPassword((current) => !current)}
           placeholder="Neues Passwort"
-          minLength={6}
           required
-          type="password"
           value={password}
+          visible={showPassword}
         />
       </label>
 
       <label>
         Passwort wiederholen
-        <input
+        <PasswordField
           autoComplete="new-password"
+          minLength={6}
           name="passwordRepeat"
           onChange={(event) => setPasswordRepeat(event.target.value)}
+          onToggleVisible={() => setShowPassword((current) => !current)}
           placeholder="Passwort wiederholen"
-          minLength={6}
           required
-          type="password"
           value={passwordRepeat}
+          visible={showPassword}
         />
       </label>
 

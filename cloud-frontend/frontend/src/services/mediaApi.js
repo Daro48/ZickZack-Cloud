@@ -183,12 +183,22 @@ export async function uploadMedia(files, options = {}) {
   }
 }
 
-export async function fetchFolderMedia(folder, { offset = 0, limit = 5 } = {}) {
+export async function fetchFolderMedia(
+  folder,
+  { offset = 0, limit = 5, query = '', type = 'all', sort = 'newest' } = {},
+) {
   const params = new URLSearchParams({
     folder,
     offset: String(offset),
     limit: String(limit),
+    sort,
   })
+  if (query) {
+    params.set('q', query)
+  }
+  if (type && type !== 'all') {
+    params.set('type', type)
+  }
   const response = await fetch(`/bp/media/folder?${params.toString()}`, {
     credentials: 'include',
   })
@@ -198,6 +208,64 @@ export async function fetchFolderMedia(folder, { offset = 0, limit = 5 } = {}) {
     throw new Error(data.message || 'Inhalte konnten nicht geladen werden.')
   }
 
+  return data
+}
+
+export async function fetchStorage() {
+  const response = await fetch('/bp/media/storage', {
+    credentials: 'include',
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.message || 'Speicher konnte nicht geladen werden.')
+  }
+  return data
+}
+
+export async function renameFolder(folder, newFolder) {
+  const response = await fetch('/bp/media/folders', {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ folder, new_folder: newFolder }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.message || 'Ordner konnte nicht umbenannt werden.')
+  }
+  return data
+}
+
+export async function deleteFolder(folder) {
+  const params = new URLSearchParams({ folder })
+  const response = await fetch(`/bp/media/folders?${params.toString()}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.message || 'Ordner konnte nicht gelöscht werden.')
+  }
+  return data
+}
+
+export async function deleteMediaItems(items) {
+  const response = await fetch('/bp/media/delete', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      items: items.map((item) => ({ type: item.type, id: item.id })),
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.message || 'Dateien konnten nicht gelöscht werden.')
+  }
   return data
 }
 

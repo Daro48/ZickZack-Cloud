@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AppNav } from '../components/AppNav.jsx'
+import { ConfirmDialog } from '../components/ConfirmDialog.jsx'
 import { FolderPicker } from '../components/FolderPicker.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
 import { MediaViewer } from '../components/MediaViewer.jsx'
@@ -6,7 +8,13 @@ import { SelectionPopup } from '../components/SelectionPopup.jsx'
 import { ShareDialog } from '../components/ShareDialog.jsx'
 import { Topbar } from '../components/Topbar.jsx'
 import { mediaKey } from '../services/communityApi.js'
-import { fetchFolderMedia } from '../services/mediaApi.js'
+import {
+  deleteFolder,
+  deleteMediaItems,
+  fetchFolderMedia,
+  renameFolder,
+} from '../services/mediaApi.js'
+import { absoluteUrl, copyText } from '../utils/format.js'
 
 const FOLDER_PAGE_SIZE = 200
 const PREFETCH_MARGIN = '800px 0px'
@@ -19,6 +27,11 @@ export function ViewContent({
   onGoCommunity,
 }) {
   const [selectedFolder, setSelectedFolder] = useState('')
+  const [folderRefreshKey, setFolderRefreshKey] = useState(0)
+  const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [sort, setSort] = useState('newest')
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(null)
   const [hasMore, setHasMore] = useState(false)
@@ -29,16 +42,25 @@ export function ViewContent({
   const [selectedKeys, setSelectedKeys] = useState(() => new Set())
   const [shareTarget, setShareTarget] = useState(null)
   const [shareNotice, setShareNotice] = useState('')
+  const [isBusy, setIsBusy] = useState(false)
+  const [dialog, setDialog] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
   const loadIdRef = useRef(0)
   const isLoadingRef = useRef(false)
   const loadedCountRef = useRef(0)
   const sentinelRef = useRef(null)
 
-  function handleFolderChange(folder) {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(query.trim())
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [query])
+
+  function resetMedia() {
     loadIdRef.current += 1
     isLoadingRef.current = false
     loadedCountRef.current = 0
-    setSelectedFolder(folder)
     setItems([])
     setTotal(null)
     setHasMore(false)
@@ -47,6 +69,11 @@ export function ViewContent({
     setIsLoading(false)
     setViewerIndex(null)
     setSelectedKeys(new Set())
+  }
+
+  function handleFolderChange(folder) {
+    resetMedia()
+    setSelectedFolder(folder)
     setShareNotice('')
   }
 
@@ -64,6 +91,9 @@ export function ViewContent({
       const data = await fetchFolderMedia(selectedFolder, {
         offset: loadedCountRef.current,
         limit: FOLDER_PAGE_SIZE,
+        query: debouncedQuery,
+        type: typeFilter,
+        sort,
       })
       if (requestId !== loadIdRef.current) {
         return
@@ -87,7 +117,11 @@ export function ViewContent({
       }
       isLoadingRef.current = false
     }
-  }, [selectedFolder])
+  }, [debouncedQuery, selectedFolder, sort, typeFilter])
+
+  useEffect(() => {
+    resetMedia()
+  }, [debouncedQuery, sort, typeFilter])
 
   const canLoadMore = hasLoaded && hasMore
 
@@ -96,7 +130,7 @@ export function ViewContent({
       return
     }
     loadPage()
-  }, [selectedFolder])
+  }, [selectedFolder, hasLoaded, isLoading, loadPage])
 
   const closeViewer = useCallback(() => {
     setViewerIndex(null)
@@ -124,15 +158,23 @@ export function ViewContent({
     })
   }
 
-  function handleShared() {
-    const count = shareTarget?.kind === 'folder' ? 0 : selectedItems.length
+  async function handleShared(data) {
+    const shares = data?.shares || (data?.share ? [data.share] : [])
+    const link = shares.find((entry) => entry.public_link)?.public_link
     setShareTarget(null)
     setSelectedKeys(new Set())
-    setShareNotice(
-      shareTarget?.kind === 'folder'
-        ? `Ordner ${selectedFolder} ist geteilt.`
-        : `${count === 1 ? '1 Datei' : `${count} Dateien`} geteilt.`,
-    )
+    let message =
+      shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
+        ? 'Ordner geteilt.'
+        : `${selectedItems.length === 1 ? '1 Datei' : `${selectedItems.length} Dateien`} geteilt.`
+    if (link?.url) {
+      const url = absoluteUrl(link.url)
+      const copied = await copyText(url)
+      message += copied
+        ? ` Öffentlicher Link kopiert.`
+        : ` Öffentlicher Link: ${url}`
+    }
+    setShareNotice(message)
   }
 
   function selectAllVisible() {
@@ -141,6 +183,101 @@ export function ViewContent({
 
   function clearSelection() {
     setSelectedKeys(new Set())
+  }
+
+  const closeDialog = useCallback(() => {
+    if (!isBusy) {
+      setDialog(null)
+    }
+  }, [isBusy])
+
+  async function handleDeleteItems(toDelete) {
+    if (!toDelete.length || isBusy) {
+      return
+    }
+    setDialog({ type: 'delete-items', items: toDelete })
+    setError('')
+  }
+
+  async function executeDeleteItems(toDelete) {
+    setIsBusy(true)
+    setError('')
+    try {
+      await deleteMediaItems(toDelete)
+      const removed = new Set(toDelete.map((item) => mediaKey(item)))
+      setItems((current) => current.filter((item) => !removed.has(mediaKey(item))))
+      setSelectedKeys((current) => {
+        const next = new Set(current)
+        for (const key of removed) {
+          next.delete(key)
+        }
+        return next
+      })
+      setTotal((current) =>
+        typeof current === 'number' ? Math.max(0, current - toDelete.length) : current,
+      )
+      setViewerIndex(null)
+      setDialog(null)
+    } catch (deleteError) {
+      setError(deleteError.message)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  function handleRenameFolder() {
+    if (!selectedFolder || isBusy) {
+      return
+    }
+    setRenameValue(selectedFolder)
+    setDialog({ type: 'rename' })
+    setError('')
+  }
+
+  async function executeRenameFolder() {
+    const nextName = renameValue.trim()
+    if (!nextName || nextName === selectedFolder) {
+      setDialog(null)
+      return
+    }
+    setIsBusy(true)
+    setError('')
+    try {
+      const data = await renameFolder(selectedFolder, nextName)
+      setSelectedFolder(data.folder || nextName)
+      setFolderRefreshKey((current) => current + 1)
+      setShareNotice(`Ordner heißt jetzt ${data.folder || nextName}.`)
+      setDialog(null)
+    } catch (renameError) {
+      setError(renameError.message)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  function handleDeleteFolder() {
+    if (!selectedFolder || isBusy) {
+      return
+    }
+    setDialog({ type: 'delete-folder' })
+    setError('')
+  }
+
+  async function executeDeleteFolder() {
+    setIsBusy(true)
+    setError('')
+    try {
+      await deleteFolder(selectedFolder)
+      resetMedia()
+      setSelectedFolder('')
+      setFolderRefreshKey((current) => current + 1)
+      setShareNotice('Ordner gelöscht.')
+      setDialog(null)
+    } catch (deleteError) {
+      setError(deleteError.message)
+    } finally {
+      setIsBusy(false)
+    }
   }
 
   useEffect(() => {
@@ -167,26 +304,15 @@ export function ViewContent({
       <Topbar
         username={username}
         onGoHome={onGoHome}
+        onGoCommunity={onGoCommunity}
         center={
-          <nav className="topbar-nav" aria-label="Hauptnavigation">
-            <button
-              className="nav-link"
-              onClick={onGoUpload}
-              type="button"
-            >
-              Upload
-            </button>
-            <button className="nav-link is-active" type="button">
-              Inhalte
-            </button>
-            <button
-              className="nav-link"
-              onClick={onGoCommunity}
-              type="button"
-            >
-              Community
-            </button>
-          </nav>
+          <AppNav
+            current="content"
+            onNavigate={(page) => {
+              if (page === 'home') onGoUpload()
+              if (page === 'community') onGoCommunity()
+            }}
+          />
         }
         action={
           <button className="secondary-button" type="button" onClick={onLogout}>
@@ -207,20 +333,74 @@ export function ViewContent({
           allowCreate={false}
           folder={selectedFolder}
           onFolderChange={handleFolderChange}
+          refreshKey={folderRefreshKey}
           username={username}
         />
 
         {selectedFolder && (
-          <section className="community-actions" aria-label="Teilen">
-            <button
-              className="secondary-button"
-              onClick={() =>
-                setShareTarget({ kind: 'folder', folder: selectedFolder })
-              }
-              type="button"
-            >
-              Ganzen Ordner teilen
-            </button>
+          <section className="media-toolbar" aria-label="Ordner und Filter">
+            <div className="media-toolbar-row">
+              <button
+                className="ghost-button"
+                disabled={isBusy}
+                onClick={handleRenameFolder}
+                type="button"
+              >
+                Ordner umbenennen
+              </button>
+              <button
+                className="danger-button"
+                disabled={isBusy}
+                onClick={handleDeleteFolder}
+                type="button"
+              >
+                Ordner löschen
+              </button>
+              <button
+                className="secondary-button"
+                onClick={() =>
+                  setShareTarget({ kind: 'folder', folder: selectedFolder })
+                }
+                type="button"
+              >
+                Ganzen Ordner teilen
+              </button>
+            </div>
+            <div className="media-toolbar-row">
+              <label className="folder-field media-search">
+                <span className="folder-field-label">Suche</span>
+                <input
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Name"
+                  type="search"
+                  value={query}
+                />
+              </label>
+              <label className="folder-field">
+                <span className="folder-field-label">Typ</span>
+                <select
+                  className="folder-select-trigger"
+                  onChange={(event) => setTypeFilter(event.target.value)}
+                  value={typeFilter}
+                >
+                  <option value="all">Alle</option>
+                  <option value="photo">Fotos</option>
+                  <option value="video">Videos</option>
+                </select>
+              </label>
+              <label className="folder-field">
+                <span className="folder-field-label">Sortierung</span>
+                <select
+                  className="folder-select-trigger"
+                  onChange={(event) => setSort(event.target.value)}
+                  value={sort}
+                >
+                  <option value="newest">Neueste</option>
+                  <option value="oldest">Älteste</option>
+                  <option value="name">Name</option>
+                </select>
+              </label>
+            </div>
           </section>
         )}
 
@@ -236,8 +416,12 @@ export function ViewContent({
             </div>
           ) : hasLoaded && items.length === 0 ? (
             <div className="empty-panel">
-              <p>Dieser Ordner ist noch leer.</p>
-              <span>Lade Dateien über Upload hoch, dann erscheinen sie hier.</span>
+              <p>Nichts gefunden.</p>
+              <span>
+                {debouncedQuery || typeFilter !== 'all'
+                  ? 'Passe Suche oder Filter an.'
+                  : 'Lade Dateien über Upload hoch, dann erscheinen sie hier.'}
+              </span>
             </div>
           ) : items.length > 0 ? (
             <div className="media-grid">
@@ -288,6 +472,7 @@ export function ViewContent({
       <SelectionPopup
         count={selectedItems.length}
         onClear={clearSelection}
+        onDelete={() => handleDeleteItems(selectedItems)}
         onSelectAll={items.length > 0 ? selectAllVisible : undefined}
         onShare={() =>
           setShareTarget({ kind: 'items', items: selectedItems })
@@ -299,6 +484,7 @@ export function ViewContent({
           index={viewerIndex}
           items={items}
           onClose={closeViewer}
+          onDelete={(item) => handleDeleteItems([item])}
           onIndexChange={setViewerIndex}
         />
       )}
@@ -311,6 +497,60 @@ export function ViewContent({
           onClose={closeShareDialog}
           onShared={handleShared}
         />
+      )}
+
+      {dialog?.type === 'delete-items' && (
+        <ConfirmDialog
+          busy={isBusy}
+          confirmLabel={
+            dialog.items.length === 1 ? 'Datei löschen' : `${dialog.items.length} Dateien löschen`
+          }
+          danger
+          description={
+            dialog.items.length === 1
+              ? `„${dialog.items[0].original_name}“ wird dauerhaft entfernt und kann nicht wiederhergestellt werden.`
+              : `${dialog.items.length} Dateien werden dauerhaft entfernt und können nicht wiederhergestellt werden.`
+          }
+          error={error}
+          onCancel={closeDialog}
+          onConfirm={() => executeDeleteItems(dialog.items)}
+          title={dialog.items.length === 1 ? 'Datei löschen' : 'Dateien löschen'}
+        />
+      )}
+
+      {dialog?.type === 'delete-folder' && (
+        <ConfirmDialog
+          busy={isBusy}
+          confirmLabel="Ordner löschen"
+          danger
+          description={`Ordner „${selectedFolder}“ und alle Dateien darin werden dauerhaft entfernt. Das kann nicht rückgängig gemacht werden.`}
+          error={error}
+          onCancel={closeDialog}
+          onConfirm={executeDeleteFolder}
+          title="Ordner löschen"
+        />
+      )}
+
+      {dialog?.type === 'rename' && (
+        <ConfirmDialog
+          busy={isBusy}
+          confirmLabel="Ordner umbenennen"
+          description="Der Name gilt für den Ordner bei dir. Freigaben dieses Ordners werden mitgeführt."
+          error={error}
+          onCancel={closeDialog}
+          onConfirm={executeRenameFolder}
+          title="Ordner umbenennen"
+        >
+          <label className="folder-field">
+            <span className="folder-field-label">Neuer Name</span>
+            <input
+              autoFocus
+              maxLength={64}
+              onChange={(event) => setRenameValue(event.target.value)}
+              value={renameValue}
+            />
+          </label>
+        </ConfirmDialog>
       )}
     </div>
   )

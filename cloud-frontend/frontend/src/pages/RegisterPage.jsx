@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { PasswordField } from '../components/PasswordField.jsx'
 
 export function RegisterPage({ error, isSubmitting, onRegister, onShowLogin }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   function handleSubmit(event) {
     event.preventDefault()
@@ -34,15 +36,16 @@ export function RegisterPage({ error, isSubmitting, onRegister, onShowLogin }) {
 
       <label>
         Passwort
-        <input
+        <PasswordField
           autoComplete="new-password"
+          minLength={6}
           name="password"
           onChange={(event) => setPassword(event.target.value)}
+          onToggleVisible={() => setShowPassword((current) => !current)}
           placeholder="Passwort"
-          minLength={6}
           required
-          type="password"
           value={password}
+          visible={showPassword}
         />
       </label>
 

@@ -6,6 +6,7 @@ export function FolderPicker({
   disabled = false,
   folder,
   onFolderChange,
+  refreshKey = 0,
   username,
 }) {
   const [folders, setFolders] = useState([])
@@ -47,7 +48,7 @@ export function FolderPicker({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [refreshKey])
 
   useEffect(() => {
     if (!isOpen) {

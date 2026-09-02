@@ -1,0 +1,2011 @@
+---
+description: Senior frontend engineering, UI quality, safety, consistency, accessibility, and user-control rules.
+alwaysApply: true
+---
+
+# Senior UI Engineering Rules
+
+## Mission
+
+Build interfaces as an experienced senior frontend engineer would build them.
+
+Every implementation must be:
+
+* intentional
+* maintainable
+* predictable
+* accessible
+* secure
+* consistent
+* responsive
+* production-ready
+* visually restrained
+
+The goal is not to generate UI that merely "looks good".
+
+The goal is to build software that feels deliberately designed, correctly engineered, and safe to use.
+
+Never produce vibe-coded UI.
+
+Never optimize visual polish at the expense of:
+
+* usability
+* maintainability
+* accessibility
+* user control
+* data safety
+* consistency
+* predictable behavior
+
+When uncertain, prefer the simpler, safer, more explicit, and more maintainable solution.
+
+---
+
+# 1. Think Before Coding
+
+Before implementing or changing UI:
+
+1. Inspect the existing codebase.
+2. Understand the surrounding feature.
+3. Inspect existing components that solve similar problems.
+4. Inspect the existing design system.
+5. Identify existing design tokens.
+6. Understand the data flow.
+7. Understand loading, error, empty, and success states.
+8. Understand responsive behavior.
+9. Understand whether the action has security or destructive implications.
+10. Determine the smallest correct implementation.
+
+Do not immediately generate JSX, CSS, components, or abstractions.
+
+First understand the system.
+
+Prefer extending existing patterns over inventing new ones.
+
+Do not redesign unrelated parts of the application.
+
+Do not perform unrelated refactors unless they are necessary for the requested implementation.
+
+---
+
+# 2. Senior Engineering Standard
+
+Code must look as if it was implemented and reviewed by an experienced senior engineer.
+
+Before choosing an implementation, consider:
+
+* architecture
+* maintainability
+* readability
+* accessibility
+* performance
+* consistency
+* edge cases
+* failure states
+* future modification cost
+
+Do not optimize for:
+
+"How quickly can this be made to work?"
+
+Optimize for:
+
+"What is the simplest production-quality implementation that fits the existing architecture?"
+
+Avoid cleverness when straightforward code is easier to understand.
+
+Prefer boring, obvious, reliable code.
+
+---
+
+# 3. Respect Existing Architecture
+
+Follow the architecture already established by the repository.
+
+Do not introduce a new:
+
+* state management system
+* component library
+* styling methodology
+* form library
+* validation library
+* data-fetching pattern
+* routing pattern
+* icon library
+* animation library
+
+for a local feature without a strong architectural reason.
+
+Consistency across the codebase is usually more valuable than using a personally preferred solution.
+
+Before adding something new, search for an existing equivalent.
+
+---
+
+# 4. No Vibe Coding
+
+Never construct UI by randomly combining fashionable visual patterns.
+
+Do not automatically add:
+
+* cards
+* gradients
+* shadows
+* glowing effects
+* glassmorphism
+* pills
+* excessive border radii
+* oversized headings
+* decorative icons
+* floating containers
+* excessive whitespace
+* animations
+* colored backgrounds
+
+Every visual element must have a reason.
+
+Do not make every section a card.
+
+Do not wrap every piece of content in a rounded rectangle.
+
+Do not use visual decoration to compensate for weak hierarchy.
+
+Prefer:
+
+* typography
+* spacing
+* alignment
+* grouping
+* contrast
+* layout
+
+before adding decoration.
+
+The interface should feel calm, deliberate, and structured.
+
+---
+
+# 5. Respect the Design System
+
+Before creating new styles, inspect existing:
+
+* colors
+* typography
+* spacing
+* radii
+* shadows
+* breakpoints
+* icons
+* buttons
+* inputs
+* dialogs
+* tables
+* cards
+* navigation
+* layout primitives
+
+Reuse established tokens and components.
+
+Do not introduce arbitrary values when a system value exists.
+
+Bad:
+
+```css
+margin-top: 17px;
+border-radius: 13px;
+z-index: 99999;
+```
+
+when the project already has established values.
+
+Do not create a new button style because the existing button is "almost right".
+
+Extend the existing system deliberately when necessary.
+
+---
+
+# 6. Avoid Arbitrary Styling
+
+Avoid:
+
+* random pixel values
+* arbitrary utility values
+* unexplained z-index values
+* unnecessary negative margins
+* layout hacks
+* repeated inline styles
+* duplicated long class strings
+* magic positioning values
+
+If a visual pattern repeats, determine whether it belongs in:
+
+* an existing component
+* a component variant
+* a design token
+* a shared style
+
+Do not abstract prematurely.
+
+But do not knowingly create repeated UI inconsistencies.
+
+---
+
+# 7. Visual Hierarchy
+
+Every screen must communicate hierarchy clearly.
+
+A user should quickly understand:
+
+1. Where they are.
+2. What the primary content is.
+3. What the primary action is.
+4. What information is secondary.
+5. What can be interacted with.
+
+Do not make everything visually important.
+
+Do not use bold text everywhere.
+
+Do not use accent colors everywhere.
+
+Do not create multiple competing primary actions without reason.
+
+Use hierarchy through:
+
+* typography
+* spacing
+* alignment
+* grouping
+* contrast
+
+before using:
+
+* borders
+* backgrounds
+* shadows
+* badges
+* decorative elements
+
+---
+
+# 8. Component Architecture
+
+Components must have clear responsibilities.
+
+Avoid giant components containing all of the following:
+
+* data fetching
+* mutations
+* domain logic
+* formatting
+* complex state
+* forms
+* dialogs
+* large rendering trees
+
+Extract components when they represent meaningful concepts or responsibilities.
+
+Good examples:
+
+```text
+UserManagementPage
+UserTable
+UserTableRow
+UserStatusBadge
+DeleteUserDialog
+```
+
+Avoid a 900-line page component containing everything.
+
+However, do not split components merely to reduce line count.
+
+A component should exist because it creates a useful conceptual boundary.
+
+---
+
+# 9. Separate Business Logic From Presentation
+
+Do not place unnecessary business logic inside presentation components.
+
+When complexity justifies it, separate:
+
+* data access
+* mutations
+* validation
+* domain logic
+* formatting
+* presentation
+
+Use the architecture already established by the project.
+
+Complex behavior may belong in:
+
+* hooks
+* services
+* utilities
+* domain functions
+* server-side logic
+
+Presentation components should primarily describe the interface.
+
+---
+
+# 10. Avoid Premature Abstraction
+
+Do not create generic abstractions after seeing one use case.
+
+Avoid vague abstractions such as:
+
+```text
+UniversalContainer
+GenericCard
+DynamicContentRenderer
+GenericActionHandler
+EverythingModal
+```
+
+Prefer concrete components until a real reusable pattern exists.
+
+Abstract when:
+
+* behavior repeats
+* structure repeats
+* semantics are shared
+* separate implementations would create drift
+
+Three clear components are often better than one component with twenty configuration props.
+
+---
+
+# 11. Component APIs
+
+Component APIs should be small and intentional.
+
+Avoid boolean-prop explosions such as:
+
+```tsx
+<Component
+  compact
+  bordered
+  elevated
+  rounded
+  highlighted
+  interactive
+  dense
+  centered
+/>
+```
+
+Prefer:
+
+* explicit variants
+* composition
+* meaningful subcomponents
+
+Do not expose implementation details through component APIs unnecessarily.
+
+Components should be difficult to misuse.
+
+---
+
+# 12. No Unnecessary Cards
+
+Cards are not the default layout primitive.
+
+Before creating a card, ask:
+
+"Does this content represent a distinct grouped object?"
+
+If not, prefer:
+
+* sections
+* spacing
+* typography
+* dividers
+* alignment
+
+Avoid:
+
+* card inside card
+* card inside modal inside card
+* every dashboard metric becoming a large card
+* every settings section becoming an isolated floating panel
+
+Professional interfaces often need less decoration than generated UI tends to add.
+
+---
+
+# 13. Border, Shadow, and Radius Discipline
+
+Borders should communicate:
+
+* separation
+* boundaries
+* selection
+* grouping
+
+Shadows should communicate elevation.
+
+Do not add them merely as decoration.
+
+Avoid combining:
+
+* border
+* background
+* large radius
+* shadow
+
+on every container.
+
+Use the project's radius system.
+
+Do not make every element heavily rounded.
+
+Use pills primarily for:
+
+* statuses
+* tags
+* filters
+* compact controls
+
+not normal layout containers.
+
+---
+
+# 14. Color Discipline
+
+Color must communicate meaning.
+
+Use semantic colors consistently for:
+
+* success
+* warning
+* error
+* information
+* destructive actions
+
+Use the primary accent primarily for:
+
+* primary actions
+* selected states
+* important interactive elements
+
+Neutral colors should carry most structural UI.
+
+Do not add colors merely to make the interface more interesting.
+
+Do not rely on color alone to communicate critical state.
+
+---
+
+# 15. Typography Discipline
+
+Use a small and consistent typography scale.
+
+Establish clear roles for:
+
+* page titles
+* section headings
+* body text
+* labels
+* metadata
+* helper text
+
+Avoid:
+
+* unnecessarily huge headings
+* excessive bold text
+* random font sizes
+* excessive uppercase text
+
+Typography should communicate hierarchy without dominating the interface.
+
+Long-form content must prioritize readability.
+
+---
+
+# 16. Icon Discipline
+
+Use the project's existing icon library.
+
+Do not mix icon libraries without a strong reason.
+
+Do not use emojis as interface icons unless emojis are explicitly part of the product's visual language.
+
+Icons must use consistent:
+
+* sizing
+* stroke weight
+* alignment
+* visual style
+
+Do not add an icon to every button or label.
+
+Use icons when they improve recognition or reduce ambiguity.
+
+Icon-only controls require accessible labels.
+
+---
+
+# 17. Button Hierarchy
+
+Every screen should have a clear action hierarchy.
+
+Typical hierarchy:
+
+```text
+Primary
+Secondary
+Tertiary
+Destructive
+```
+
+Do not place several visually dominant primary buttons together without reason.
+
+Button labels must describe the actual action.
+
+Prefer:
+
+```text
+Create project
+Save changes
+Send invitation
+Delete account
+```
+
+over:
+
+```text
+Continue
+Confirm
+Submit
+Yes
+OK
+```
+
+when a more specific label is possible.
+
+---
+
+# 18. Spacing Discipline
+
+Spacing must follow a consistent rhythm.
+
+Do not solve layout problems by adding random margins.
+
+Think in relationships:
+
+```text
+label → input
+heading → description
+item → item
+section → section
+container → content
+```
+
+Related elements should be visually closer than unrelated elements.
+
+Whitespace must communicate hierarchy.
+
+Do not use huge amounts of whitespace merely to make the interface look "premium".
+
+---
+
+# 19. Alignment
+
+Strong alignment is more valuable than decoration.
+
+Prefer shared visual edges.
+
+Avoid almost-aligned elements.
+
+Forms, tables, headings, actions, and metadata should follow consistent alignment rules.
+
+Do not introduce unusual centered layouts when the rest of the product is left-aligned.
+
+---
+
+# 20. Responsive Design
+
+Responsive behavior must be intentionally designed.
+
+Do not treat responsive design as:
+
+```text
+desktop
+→ shrink
+→ stack everything
+```
+
+At important breakpoints consider:
+
+* information priority
+* navigation
+* action placement
+* tables
+* content density
+* touch targets
+* overflow
+* dialogs
+* sidebars
+* long content
+
+Do not hide important functionality on mobile merely because it is difficult to lay out.
+
+Adapt the interaction instead.
+
+---
+
+# 21. Avoid Fragile Layout Hacks
+
+Prefer:
+
+* flexbox
+* CSS grid
+* normal document flow
+* established project layout primitives
+
+Avoid solving normal layout problems with:
+
+* absolute positioning
+* fixed coordinates
+* transform hacks
+* excessive negative margins
+* arbitrary viewport calculations
+
+Absolute positioning should be used only when the design genuinely requires it.
+
+---
+
+# 22. Data-Dense Interfaces
+
+For:
+
+* dashboards
+* admin panels
+* internal tools
+* analytics
+* management interfaces
+
+prioritize:
+
+* scanability
+* comparison
+* information density
+* clear grouping
+
+over decorative whitespace.
+
+Use appropriate:
+
+* tables
+* compact lists
+* rows
+* filters
+* toolbars
+* grouped sections
+
+Do not convert tabular data into giant cards simply because cards look modern.
+
+Professional software can intentionally be dense.
+
+---
+
+# 23. Real Data, Not Demo Data
+
+Do not design only for ideal examples.
+
+Consider:
+
+* long names
+* missing values
+* empty strings
+* zero values
+* large numbers
+* large datasets
+* one item
+* thousands of items
+* duplicate names
+* long translations
+* slow responses
+* failed responses
+* unexpected but valid values
+
+Do not assume text fits on one line.
+
+Do not hardcode dimensions around sample content.
+
+The UI must remain stable with realistic data.
+
+---
+
+# 24. User Control First
+
+Users must understand:
+
+1. What will happen.
+2. Why it will happen.
+3. What data will be affected.
+4. Whether it can be undone.
+5. Whether other users or systems are affected.
+
+Never perform destructive, expensive, external, or irreversible actions through ambiguous interactions.
+
+Sensitive actions require explicit intent.
+
+Examples include:
+
+* delete
+* remove
+* overwrite
+* publish
+* send
+* purchase
+* deploy
+* revoke access
+* change permissions
+* cancel subscription
+* permanently discard data
+
+---
+
+# 25. No Dark Patterns
+
+Never implement:
+
+* misleading buttons
+* fake urgency
+* forced continuity
+* hidden unsubscribe actions
+* pre-selected paid options
+* confusing opt-outs
+* confirmshaming
+* deceptive countdowns
+* hidden consequences
+
+Never make the visual hierarchy intentionally manipulate the user into choosing an option.
+
+Button text must describe the real consequence.
+
+---
+
+# 26. Destructive Actions
+
+Destructive actions must be visually and behaviorally distinct.
+
+Use confirmation when an action:
+
+* permanently deletes data
+* cannot reasonably be undone
+* affects many records
+* affects another user
+* changes security settings
+* causes financial consequences
+
+Preferred flow:
+
+```text
+Action
+→ Confirmation
+→ Execute
+→ Success/Error
+```
+
+Confirmation must explain the consequence.
+
+Bad:
+
+```text
+Are you sure?
+```
+
+Good:
+
+```text
+Delete project "Atlas"?
+
+This permanently removes 24 files and cannot be undone.
+```
+
+Whenever practical prefer:
+
+```text
+soft delete
+→ undo
+→ permanent deletion later
+```
+
+over immediate permanent deletion.
+
+---
+
+# 27. Prefer Undo When Appropriate
+
+Do not interrupt users with unnecessary confirmation dialogs for easily reversible actions.
+
+Prefer:
+
+```text
+Action
+→ Execute
+→ Undo
+```
+
+Example:
+
+```text
+Conversation archived — Undo
+```
+
+Use confirmation primarily when an action is difficult or impossible to reverse.
+
+---
+
+# 28. Confirmation Strength
+
+Use proportional friction.
+
+### Level 0 — Immediate
+
+For harmless actions.
+
+### Level 1 — Undo
+
+For simple reversible mutations.
+
+### Level 2 — Confirmation
+
+For meaningful destructive actions.
+
+### Level 3 — Explicit Confirmation
+
+For highly destructive operations.
+
+Example:
+
+```text
+Type "Atlas" to permanently delete this project.
+```
+
+### Level 4 — Re-authentication
+
+For security-critical operations such as:
+
+* changing authentication settings
+* exporting highly sensitive information
+* deleting an account
+* changing critical permissions
+
+Do not add stronger friction than necessary.
+
+---
+
+# 29. Prevent Accidental Actions
+
+Important actions must never trigger from:
+
+* hover
+* focus
+* scrolling
+* page load
+* opening a modal
+* accidental drag
+* ambiguous keyboard shortcuts
+
+Important actions require explicit activation.
+
+Destructive keyboard shortcuts require safeguards.
+
+---
+
+# 30. Async State
+
+Every asynchronous action must expose state.
+
+Minimum states:
+
+```text
+idle
+loading
+success
+error
+```
+
+When appropriate also support:
+
+```text
+progress
+retry
+cancel
+```
+
+Never leave users wondering whether an action happened.
+
+Prevent duplicate mutations while requests are processing.
+
+Example:
+
+```text
+Save
+→ Saving…
+→ Saved
+```
+
+or:
+
+```text
+Save
+→ Saving…
+→ Could not save — Retry
+```
+
+---
+
+# 31. Prevent Duplicate Actions
+
+Network mutations must protect against accidental duplicate execution.
+
+Use:
+
+* disabled submission while processing
+* idempotent backend operations where appropriate
+
+This is especially important for:
+
+* payments
+* orders
+* invitations
+* messages
+* account creation
+* deployments
+* destructive operations
+
+---
+
+# 32. Error Handling
+
+Never silently fail.
+
+Do not:
+
+* swallow API errors
+* only log failures to the console
+* clear user input after failure
+* display fake success
+
+Errors should explain:
+
+* what failed
+* what was preserved
+* what can be done next
+
+Bad:
+
+```text
+Something went wrong.
+```
+
+Better:
+
+```text
+Your changes could not be saved. Your edits are still here. Try again.
+```
+
+Do not expose internal implementation details such as:
+
+* stack traces
+* database errors
+* internal IDs
+* secrets
+* tokens
+* infrastructure details
+
+to normal users.
+
+---
+
+# 33. Error Boundaries Should Match Scope
+
+Use the smallest appropriate error scope.
+
+A failed table refresh should not necessarily replace the entire page with an error screen.
+
+A failed widget should not destroy unrelated usable content.
+
+Preserve functioning UI whenever possible.
+
+---
+
+# 34. Protect User Input
+
+Never discard meaningful user-entered content without warning.
+
+If navigation would destroy unsaved work:
+
+* autosave it, or
+* warn before leaving
+
+Forms should preserve entered values after recoverable errors.
+
+Never reset an entire form because one field is invalid.
+
+---
+
+# 35. Forms
+
+Every input must have a clear accessible label.
+
+Do not use placeholders as substitutes for labels.
+
+Validation should:
+
+* appear near the relevant field
+* explain how to fix the problem
+* preserve existing input
+* avoid unnecessary interruption
+
+Bad:
+
+```text
+Invalid input
+```
+
+Better:
+
+```text
+Enter a valid email address, for example name@example.com.
+```
+
+Do not show validation errors before the user has had a reasonable chance to interact with the field.
+
+---
+
+# 36. Security-Sensitive Inputs
+
+Passwords, tokens, API keys, authentication codes, payment information, and other secrets require special handling.
+
+Never:
+
+* log secrets
+* expose secrets in URLs
+* send secrets to analytics
+* unnecessarily display secrets
+* persist secrets in insecure client storage
+
+Secret fields should be masked by default.
+
+Reveal actions must require explicit user intent.
+
+Clipboard operations involving secrets must be intentional.
+
+---
+
+# 37. Permissions
+
+Request permissions only when they are actually needed.
+
+Examples:
+
+* camera
+* microphone
+* location
+* notifications
+* contacts
+* filesystem
+
+Explain why the permission is needed before triggering browser or operating-system permission UI when appropriate.
+
+Do not repeatedly pressure users after denial.
+
+Degrade gracefully whenever possible.
+
+---
+
+# 38. Authentication
+
+Authentication state must be obvious.
+
+Users should understand:
+
+* whether they are signed in
+* which account they are using
+* whether authentication failed
+* whether their session expired
+
+Never fake authenticated state in production.
+
+When sessions expire, preserve unsaved user work whenever reasonably possible before requesting authentication again.
+
+---
+
+# 39. Authorization
+
+Frontend visibility is not authorization.
+
+Never assume hiding a button secures an operation.
+
+Security-sensitive permissions must be enforced by the backend.
+
+Client-side permission checks exist for UX, not security.
+
+Never expose privileged functionality based solely on client-controlled state.
+
+---
+
+# 40. External Side Effects
+
+Actions communicating with external systems require additional care.
+
+Examples:
+
+* sending emails
+* sending messages
+* publishing
+* creating invoices
+* deploying
+* changing infrastructure
+* inviting users
+* issuing refunds
+
+Before execution, clearly expose relevant consequences such as:
+
+* recipient
+* environment
+* amount
+* resource
+* resulting permissions
+
+Never silently convert a preview into execution.
+
+---
+
+# 41. Preview Is Not Execution
+
+Keep preview and execution explicitly separated.
+
+```text
+Preview email ≠ Send email
+Preview deployment ≠ Deploy
+Preview invoice ≠ Issue invoice
+Preview changes ≠ Save changes
+```
+
+The UI must clearly communicate which state the user is in.
+
+---
+
+# 42. Safe Defaults
+
+Defaults should minimize potential harm.
+
+Do not default to:
+
+* public visibility
+* permanent deletion
+* broad permissions
+* notifying everyone
+* production environments
+* destructive overwrites
+* sharing sensitive information
+
+Prefer least privilege and least destructive behavior.
+
+---
+
+# 43. Bulk Actions
+
+Bulk actions require clear scope.
+
+Always communicate:
+
+* action
+* affected item count
+* affected scope
+
+Prefer:
+
+```text
+Delete 128 selected customers
+```
+
+over:
+
+```text
+Delete selected
+```
+
+Large or unusually consequential bulk operations may require stronger confirmation.
+
+---
+
+# 44. Production vs Development
+
+Production operations must be distinguishable from test/development operations when relevant.
+
+Never silently switch environments.
+
+For dangerous production operations clearly expose:
+
+```text
+PRODUCTION
+```
+
+and the affected resource.
+
+Mock data must not be indistinguishable from production data when that distinction matters.
+
+---
+
+# 45. AI-Generated Actions
+
+AI suggestions are not user intent.
+
+Never automatically execute sensitive operations merely because an AI model proposed them.
+
+For meaningful AI-generated:
+
+* messages
+* commands
+* database queries
+* permission changes
+* purchases
+* deployments
+* destructive operations
+
+show the proposed action before execution when appropriate.
+
+The user remains the final authority.
+
+---
+
+# 46. AI Uncertainty
+
+Never present uncertain generated output as verified information.
+
+When relevant distinguish:
+
+* confirmed data
+* inferred data
+* generated suggestions
+
+Never fabricate successful actions.
+
+Do not display:
+
+```text
+Email sent
+```
+
+unless the backend confirmed that the email was actually sent.
+
+Do not display:
+
+```text
+Saved
+```
+
+before persistence has actually succeeded unless the interface explicitly uses a safe optimistic strategy.
+
+---
+
+# 47. Optimistic UI
+
+Use optimistic updates only when failure is:
+
+* unlikely
+* reversible
+* clearly recoverable
+
+For sensitive operations, wait for server confirmation.
+
+Never optimistically claim:
+
+```text
+Payment completed
+Deployment successful
+Account deleted
+```
+
+before confirmation.
+
+---
+
+# 48. Data Freshness
+
+When data may be stale, do not present it as guaranteed current.
+
+Where relevant expose:
+
+* last updated time
+* refresh state
+* synchronization state
+
+Do not overwrite newer server state with stale client state without conflict handling.
+
+---
+
+# 49. Loading States
+
+Loading UI should preserve layout stability.
+
+Prefer:
+
+* stable dimensions
+* subtle skeletons
+* inline progress
+* local loading states
+
+Do not use full-page loading states when only one component is updating.
+
+Do not display an empty state before loading has completed.
+
+Wrong:
+
+```text
+No projects found
+```
+
+appearing briefly before projects load.
+
+Correct:
+
+```text
+Loading
+→ Projects
+```
+
+Skeletons should roughly represent the final structure.
+
+Do not add excessive skeleton animation.
+
+---
+
+# 50. Empty States
+
+Empty states should help users understand what happened and what they can do next.
+
+Do not automatically generate:
+
+* giant illustrations
+* decorative graphics
+* motivational filler
+* excessive copy
+
+A useful empty state usually needs:
+
+* concise explanation
+* relevant next action
+
+Example:
+
+```text
+No API keys yet.
+
+Create an API key to authenticate requests.
+
+[Create API key]
+```
+
+---
+
+# 51. Toasts
+
+Do not use temporary toast notifications as the only location for critical information.
+
+Critical errors, security warnings, and required actions must remain visible until resolved.
+
+Toasts are appropriate for lightweight confirmations such as:
+
+```text
+Copied
+Saved
+Archived
+```
+
+---
+
+# 52. Dialogs
+
+Dialogs must:
+
+* have a clear title
+* explain the action
+* use explicit button labels
+* support keyboard navigation
+* correctly manage focus
+* restore focus after closing
+
+Avoid:
+
+```text
+Yes
+No
+```
+
+Prefer:
+
+```text
+Delete project
+Cancel
+```
+
+Do not use a modal when inline interaction would be simpler and equally safe.
+
+---
+
+# 53. Navigation
+
+Users should understand where they are.
+
+Avoid surprising navigation.
+
+Do not:
+
+* unexpectedly open new tabs
+* redirect after unrelated actions
+* destroy unsaved work during navigation
+* unexpectedly change routes after background operations
+
+Browser back navigation should behave predictably.
+
+---
+
+# 54. Accessibility
+
+Interactive UI must work with:
+
+* mouse
+* keyboard
+* touch
+* screen readers
+
+Maintain:
+
+* semantic HTML
+* visible focus states
+* accessible labels
+* sufficient contrast
+* logical tab order
+* usable touch targets
+
+Critical information must not depend only on:
+
+* color
+* hover
+* animation
+* visual positioning
+
+Prefer native semantic elements before recreating behavior with generic containers.
+
+A button should usually be a `<button>`.
+
+A link should usually be an `<a>`.
+
+---
+
+# 55. Motion
+
+Animation must communicate something useful:
+
+* state change
+* hierarchy
+* spatial relationship
+* feedback
+
+Do not animate merely because animation is available.
+
+Avoid:
+
+* excessive spring animations
+* bouncing controls
+* unnecessary entrance animations
+* large movements
+* slow transitions
+
+Interactions should feel immediate.
+
+Respect:
+
+```css
+prefers-reduced-motion
+```
+
+---
+
+# 56. Dependency Discipline
+
+Do not install packages for functionality that can reasonably be implemented using:
+
+* existing dependencies
+* browser APIs
+* small local utilities
+
+Before adding a dependency:
+
+1. Search the repository for an existing solution.
+2. Determine whether the dependency is actually necessary.
+3. Consider bundle impact.
+4. Consider maintenance cost.
+5. Follow existing project conventions.
+
+Do not install an entire UI library to implement one component.
+
+---
+
+# 57. Performance
+
+Do not prematurely optimize, but avoid obvious performance mistakes.
+
+Consider:
+
+* unnecessary rerenders
+* duplicated requests
+* huge client bundles
+* expensive work during render
+* rendering thousands of DOM nodes
+* unnecessary client-side JavaScript
+* large unoptimized assets
+
+Do not add memoization everywhere without evidence.
+
+Do not sacrifice readability for speculative micro-optimizations.
+
+Use the framework's established server/client boundaries correctly.
+
+---
+
+# 58. State Management
+
+Keep state as local as reasonably possible.
+
+Do not place local component state into global state without reason.
+
+Do not duplicate derived state.
+
+Prefer deriving values from existing state when practical.
+
+Avoid synchronization effects whose only purpose is keeping two representations of the same state aligned.
+
+State ownership should be obvious.
+
+---
+
+# 59. Effects and Side Effects
+
+Use effects intentionally.
+
+Do not use effects as a default mechanism for deriving state.
+
+Avoid chains of effects that trigger one another.
+
+Side effects should have clear ownership and cleanup.
+
+Network mutations should happen because of explicit application events, not accidental render behavior.
+
+---
+
+# 60. Type Safety
+
+Do not bypass the type system merely to make code compile.
+
+Avoid unnecessary:
+
+```ts
+any
+```
+
+unsafe casts and ignored type errors.
+
+Prefer accurate domain types.
+
+Handle nullable and optional data intentionally.
+
+Do not assume API data is valid merely because TypeScript says it is.
+
+Validate untrusted boundaries where appropriate.
+
+---
+
+# 61. Naming
+
+Names should explain intent.
+
+Avoid:
+
+```text
+data
+item
+thing
+temp
+x
+handleThing
+doStuff
+```
+
+when a precise name exists.
+
+Prefer:
+
+```text
+selectedProjectIds
+isDeleteDialogOpen
+handleProjectDeletion
+pendingInvitation
+```
+
+Good naming reduces the need for comments.
+
+---
+
+# 62. Comments
+
+Comments should explain:
+
+WHY
+
+not merely:
+
+WHAT
+
+Avoid generated-looking comments such as:
+
+```ts
+// Set loading to true
+setLoading(true);
+```
+
+Use comments for:
+
+* architectural reasoning
+* non-obvious constraints
+* unusual browser behavior
+* important tradeoffs
+* security considerations
+
+Do not narrate obvious code.
+
+---
+
+# 63. No Fake Completeness
+
+Never fake functionality to make the UI appear finished.
+
+Do not:
+
+* create buttons that do nothing
+* fake backend success
+* fake loading behavior
+* hardcode successful states
+* silently use mock data as real data
+* create placeholder interactions without making their status clear
+
+If backend functionality is unavailable, keep the limitation explicit during development.
+
+A polished fake implementation is worse than an honest incomplete one.
+
+---
+
+# 64. Do Not Over-Engineer
+
+Senior engineering does not mean maximum abstraction.
+
+Do not introduce:
+
+* factories
+* registries
+* providers
+* reducers
+* event buses
+* complex generic systems
+
+for simple local problems.
+
+Use the least complex architecture that cleanly solves the actual requirement.
+
+Complexity must earn its existence.
+
+---
+
+# 65. Do Not Under-Engineer
+
+Do not take shortcuts that create obvious future problems.
+
+Avoid:
+
+* duplicated business logic
+* giant components
+* hardcoded domain values
+* missing error handling
+* ignored accessibility
+* magic constants
+* unsafe mutations
+* fragile CSS hacks
+
+Simple does not mean careless.
+
+---
+
+# 66. Preserve Scope
+
+When implementing a feature:
+
+Do not casually change:
+
+* global typography
+* global spacing
+* navigation
+* unrelated components
+* component APIs
+* application architecture
+* dependency versions
+
+unless required.
+
+Senior engineering minimizes unnecessary change surface.
+
+A focused diff is usually preferable to a broad rewrite.
+
+---
+
+# 67. Existing Behavior
+
+Before replacing existing behavior, understand why it exists.
+
+Do not remove:
+
+* validation
+* authorization checks
+* confirmations
+* accessibility behavior
+* loading states
+* error handling
+* analytics hooks
+* compatibility workarounds
+
+simply because they appear unnecessary.
+
+If uncertain about a non-obvious existing behavior, investigate before deleting it.
+
+---
+
+# 68. UI Safety Decision Rule
+
+Before implementing an interaction ask:
+
+1. Can this cause data loss?
+2. Can it affect another person?
+3. Can it create financial cost?
+4. Can it expose private data?
+5. Can it change security or permissions?
+6. Can it affect production systems?
+7. Is it difficult to undo?
+
+If every answer is NO:
+
+implement normally.
+
+If any answer is YES:
+
+apply proportional safeguards.
+
+---
+
+# 69. Stop and Ask When Necessary
+
+Do not invent security-critical behavior.
+
+Ask for clarification when requirements are genuinely ambiguous regarding:
+
+* authentication
+* authorization
+* billing
+* deletion
+* privacy
+* permissions
+* data retention
+* production deployments
+* external communication
+* irreversible actions
+
+Do not ask unnecessary questions when the safe intended behavior is already clear.
+
+Ask precise questions, not broad ones.
+
+---
+
+# 70. Definition of Done
+
+A UI task is not complete until relevant states have been considered.
+
+### Interaction states
+
+* default
+* hover
+* focus
+* active
+* disabled
+
+### Data states
+
+* loading
+* empty
+* success
+* error
+
+### Form states
+
+* untouched
+* partial
+* invalid
+* submitting
+* submission failure
+* submission success
+
+### Destructive action states
+
+* confirmation
+* cancellation
+* processing
+* failure
+* success
+* recovery or undo
+
+Do not implement only the happy path.
+
+---
+
+# 71. Senior Developer Self-Review
+
+Before finishing, review the implementation as if reviewing another senior engineer's pull request.
+
+## Architecture
+
+Ask:
+
+* Does this follow existing project patterns?
+* Did I introduce unnecessary architecture?
+* Did I duplicate existing functionality?
+* Are responsibilities clear?
+* Is state owned by the correct component/system?
+
+## Code Quality
+
+Ask:
+
+* Could another developer understand this quickly?
+* Are names precise?
+* Are components appropriately scoped?
+* Are there magic values?
+* Are there unnecessary effects?
+* Are there hacks that should be replaced by normal layout or architecture?
+
+## Visual Quality
+
+Ask:
+
+* Is the hierarchy obvious?
+* Is anything unnecessarily decorative?
+* Is spacing consistent?
+* Is alignment precise?
+* Did I overuse cards?
+* Did I overuse borders?
+* Did I overuse shadows?
+* Did I overuse pills?
+* Did I overuse accent colors?
+
+## Interaction
+
+Ask:
+
+* Are actions predictable?
+* Are loading states handled?
+* Are errors handled?
+* Are destructive operations protected?
+* Can actions accidentally execute twice?
+* Is user input preserved?
+
+## Responsive
+
+Ask:
+
+* Does this work at narrow widths?
+* Does content overflow?
+* Are important actions still discoverable?
+* Are touch targets usable?
+* Does the mobile layout preserve information priority?
+
+## Accessibility
+
+Ask:
+
+* Can this be operated with a keyboard?
+* Is focus visible?
+* Are controls semantically correct?
+* Do icon-only controls have accessible names?
+* Is critical state communicated without relying only on color?
+
+## Security
+
+Ask:
+
+* Is authorization enforced server-side?
+* Could sensitive information leak?
+* Are dangerous defaults avoided?
+* Does the UI claim success only after real success?
+
+## Product Quality
+
+Ask:
+
+* Does every visible element have a purpose?
+* Does this feel like production software?
+* Does this match the rest of the product?
+* Does it look intentionally designed rather than generated?
+* Would I approve this implementation in a senior-level code review?
+
+If an important answer is NO:
+
+fix it before considering the task complete.
+
+---
+
+# 72. Final Quality Gate
+
+Before declaring a UI task complete, verify:
+
+* Existing project patterns were inspected first.
+* Existing components were reused where appropriate.
+* No unnecessary dependencies were introduced.
+* No unnecessary abstractions were introduced.
+* No unrelated redesign was performed.
+* No arbitrary styling was introduced without reason.
+* Visual hierarchy is clear.
+* Spacing and alignment are consistent.
+* Responsive behavior works.
+* Realistic data is handled.
+* Empty states are handled.
+* Loading states are handled.
+* Error states are handled.
+* User input survives recoverable failures.
+* Destructive actions cannot happen accidentally.
+* Duplicate mutations are prevented.
+* Sensitive information is protected.
+* Authorization is not delegated to the frontend.
+* Keyboard navigation works.
+* Focus states are visible.
+* Semantic HTML is used.
+* Critical information is not color-only.
+* AI suggestions are not silently executed.
+* The UI never claims success without actual confirmation.
+* No fake functionality was added.
+* The resulting code is understandable and maintainable.
+
+If any important item fails, fix it before finishing.
+
+---
+
+# 73. Default UI Philosophy
+
+When explicit design direction does not exist, default to:
+
+* restrained rather than flashy
+* simple rather than clever
+* structured rather than decorative
+* consistent rather than novel
+* clear rather than impressive
+* functional rather than ornamental
+* dense enough to be useful
+* whitespace with purpose
+* semantic HTML
+* existing components
+* existing design tokens
+* clear visual hierarchy
+* subtle interaction feedback
+
+Do not attempt to make every screen visually impressive.
+
+Good product UI often disappears behind the task the user is trying to accomplish.
+
+The interface should feel like one coherent product designed by one experienced team.
+
+It should never look like an AI generated a collection of fashionable components and connected them until the page looked finished.

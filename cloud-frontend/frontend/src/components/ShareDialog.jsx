@@ -1,19 +1,34 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createShare, fetchCommunityUsers } from '../services/communityApi.js'
+import { fetchFolders } from '../services/mediaApi.js'
 
-export function ShareDialog({ kind, folder, items = [], onClose, onShared }) {
+export function ShareDialog({
+  kind,
+  folder,
+  folders = [],
+  items = [],
+  onClose,
+  onShared,
+}) {
   const [users, setUsers] = useState([])
   const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [availableFolders, setAvailableFolders] = useState(folders)
+  const [selectedFolders, setSelectedFolders] = useState(() => new Set(folders.length ? folders : folder ? [folder] : []))
+  const [note, setNote] = useState('')
+  const [publicDays, setPublicDays] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const isFolderShare = kind === 'folder' || kind === 'folders'
   const itemCount = items.length
-  const title =
-    kind === 'folder'
-      ? `Ordner ${folder} teilen`
-      : `${itemCount === 1 ? '1 Datei' : `${itemCount} Dateien`} teilen`
+  const folderCount = selectedFolders.size
+  const title = isFolderShare
+    ? folderCount <= 1
+      ? `Ordner ${[...selectedFolders][0] || folder || ''} teilen`
+      : `${folderCount} Ordner teilen`
+    : `${itemCount === 1 ? '1 Datei' : `${itemCount} Dateien`} teilen`
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -21,15 +36,31 @@ export function ShareDialog({ kind, folder, items = [], onClose, onShared }) {
 
     let cancelled = false
 
-    async function loadUsers() {
+    async function load() {
       setIsLoading(true)
       setError('')
       try {
-        const data = await fetchCommunityUsers()
+        const [userData, folderData] = await Promise.all([
+          fetchCommunityUsers(),
+          isFolderShare ? fetchFolders() : Promise.resolve({ folders: [] }),
+        ])
         if (cancelled) {
           return
         }
-        setUsers(data.users || [])
+        setUsers(userData.users || [])
+        if (isFolderShare) {
+          const nextFolders = folderData.folders || []
+          setAvailableFolders(nextFolders)
+          setSelectedFolders((current) => {
+            if (current.size > 0) {
+              return current
+            }
+            if (folder && nextFolders.includes(folder)) {
+              return new Set([folder])
+            }
+            return current
+          })
+        }
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError.message)
@@ -41,7 +72,7 @@ export function ShareDialog({ kind, folder, items = [], onClose, onShared }) {
       }
     }
 
-    loadUsers()
+    load()
 
     function handleKeyDown(event) {
       if (event.key === 'Escape') {
@@ -55,17 +86,17 @@ export function ShareDialog({ kind, folder, items = [], onClose, onShared }) {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [onClose])
+  }, [folder, isFolderShare, onClose])
 
   const allSelected = users.length > 0 && selectedIds.size === users.length
   const selectedCount = selectedIds.size
 
   const summary = useMemo(() => {
-    if (kind === 'folder') {
-      return `Der Ordner bleibt bei dir gespeichert. Andere sehen denselben Inhalt, auch neue Uploads.`
+    if (isFolderShare) {
+      return 'Die Ordner bleiben bei dir gespeichert. Andere sehen denselben Inhalt, auch neue Uploads.'
     }
     return 'Die markierten Dateien bleiben bei dir gespeichert. Andere sehen nur diese Auswahl.'
-  }, [kind])
+  }, [isFolderShare])
 
   function toggleUser(userId) {
     setSelectedIds((current) => {
@@ -87,31 +118,52 @@ export function ShareDialog({ kind, folder, items = [], onClose, onShared }) {
     setSelectedIds(new Set(users.map((entry) => entry.id)))
   }
 
+  function toggleFolder(name) {
+    setSelectedFolders((current) => {
+      const next = new Set(current)
+      if (next.has(name)) {
+        next.delete(name)
+      } else {
+        next.add(name)
+      }
+      return next
+    })
+  }
+
   async function handleSubmit(event) {
     event.preventDefault()
     if (isSaving || selectedCount === 0) {
+      return
+    }
+    if (isFolderShare && selectedFolders.size === 0) {
+      setError('Bitte mindestens einen Ordner wählen.')
       return
     }
 
     setIsSaving(true)
     setError('')
     try {
-      const payload =
-        kind === 'folder'
-          ? {
-              kind: 'folder',
-              folder,
-              all: allSelected,
-              user_ids: [...selectedIds],
-            }
-          : {
-              kind: 'items',
-              items: items.map((item) => ({ type: item.type, id: item.id })),
-              all: allSelected,
-              user_ids: [...selectedIds],
-            }
+      const chosenFolders = [...selectedFolders]
+      const payload = isFolderShare
+        ? {
+            kind: chosenFolders.length > 1 ? 'folders' : 'folder',
+            folder: chosenFolders[0],
+            folders: chosenFolders,
+            all: allSelected,
+            user_ids: [...selectedIds],
+            note: note.trim(),
+            public_days: publicDays ? Number(publicDays) : undefined,
+          }
+        : {
+            kind: 'items',
+            items: items.map((item) => ({ type: item.type, id: item.id })),
+            all: allSelected,
+            user_ids: [...selectedIds],
+            note: note.trim(),
+            public_days: publicDays ? Number(publicDays) : undefined,
+          }
       const data = await createShare(payload)
-      onShared?.(data.share)
+      onShared?.(data)
     } catch (saveError) {
       setError(saveError.message)
       setIsSaving(false)
@@ -150,6 +202,24 @@ export function ShareDialog({ kind, folder, items = [], onClose, onShared }) {
 
         <p className="share-dialog-copy">{summary}</p>
 
+        {isFolderShare && availableFolders.length > 0 && (
+          <div className="share-user-list" role="group" aria-label="Ordner wählen">
+            {availableFolders.map((entry) => {
+              const isActive = selectedFolders.has(entry)
+              return (
+                <button
+                  className={`share-user-option${isActive ? ' is-active' : ''}`}
+                  key={entry}
+                  onClick={() => toggleFolder(entry)}
+                  type="button"
+                >
+                  {entry}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {isLoading ? (
           <p className="folder-hint">User werden geladen…</p>
         ) : users.length === 0 ? (
@@ -182,11 +252,43 @@ export function ShareDialog({ kind, folder, items = [], onClose, onShared }) {
           </div>
         )}
 
+        <label className="folder-field">
+          <span className="folder-field-label">Notiz (optional)</span>
+          <textarea
+            className="share-note-input"
+            maxLength={280}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Kurzer Hinweis für die Empfänger"
+            rows={2}
+            value={note}
+          />
+        </label>
+
+        <label className="folder-field">
+          <span className="folder-field-label">Öffentlicher Link</span>
+          <select
+            className="folder-select-trigger"
+            onChange={(event) => setPublicDays(event.target.value)}
+            value={publicDays}
+          >
+            <option value="">Kein öffentlicher Link</option>
+            <option value="1">1 Tag gültig</option>
+            <option value="7">7 Tage gültig</option>
+            <option value="30">30 Tage gültig</option>
+          </select>
+        </label>
+
         {error && <p className="form-error">{error}</p>}
 
         <button
           className="primary-button share-dialog-submit"
-          disabled={isSaving || isLoading || selectedCount === 0 || users.length === 0}
+          disabled={
+            isSaving ||
+            isLoading ||
+            selectedCount === 0 ||
+            users.length === 0 ||
+            (isFolderShare && selectedFolders.size === 0)
+          }
           type="submit"
         >
           {isSaving

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AppNav } from '../components/AppNav.jsx'
+import { ConfirmDialog } from '../components/ConfirmDialog.jsx'
 import { FolderPicker } from '../components/FolderPicker.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
 import { MediaViewer } from '../components/MediaViewer.jsx'
@@ -6,12 +8,15 @@ import { SelectionPopup } from '../components/SelectionPopup.jsx'
 import { ShareDialog } from '../components/ShareDialog.jsx'
 import { Topbar } from '../components/Topbar.jsx'
 import {
+  createShareLink,
   deleteShare,
   fetchCommunity,
   fetchShareMedia,
+  leaveShare,
   mediaKey,
 } from '../services/communityApi.js'
 import { fetchFolderMedia } from '../services/mediaApi.js'
+import { absoluteUrl, copyText } from '../utils/format.js'
 
 const PAGE_SIZE = 200
 const PREFETCH_MARGIN = '800px 0px'
@@ -27,7 +32,7 @@ function recipientLabel(share) {
   return `${names.slice(0, 2).join(', ')} +${names.length - 2}`
 }
 
-function ShareCard({ share, onOpen, onDelete, isDeleting }) {
+function ShareCard({ share, onOpen, onDelete, onLeave, onCopyLink, isDeleting, isLeaving }) {
   const preview = share.preview || []
   const title =
     share.kind === 'folder' ? share.folder : `${share.item_count} Datei(en)`
@@ -58,6 +63,7 @@ function ShareCard({ share, onOpen, onDelete, isDeleting }) {
         <div className="share-card-meta">
           <span>{kicker}</span>
           <strong>{title}</strong>
+          {share.note && <em className="share-card-note">{share.note}</em>}
           <em>
             {share.item_count} Datei(en)
             {share.mine ? ` · ${recipientLabel(share)}` : ''}
@@ -65,13 +71,32 @@ function ShareCard({ share, onOpen, onDelete, isDeleting }) {
         </div>
       </button>
       {share.mine && (
+        <div className="share-card-actions">
+          <button
+            className="ghost-button"
+            onClick={onCopyLink}
+            type="button"
+          >
+            {share.public_link ? 'Link kopieren' : 'Öffentlicher Link'}
+          </button>
+          <button
+            className="ghost-button share-delete"
+            disabled={isDeleting}
+            onClick={onDelete}
+            type="button"
+          >
+            {isDeleting ? 'Wird beendet…' : 'Freigabe beenden'}
+          </button>
+        </div>
+      )}
+      {!share.mine && (
         <button
           className="ghost-button share-delete"
-          disabled={isDeleting}
-          onClick={onDelete}
+          disabled={isLeaving}
+          onClick={onLeave}
           type="button"
         >
-          {isDeleting ? 'Wird beendet…' : 'Freigabe beenden'}
+          {isLeaving ? 'Wird verlassen…' : 'Verlassen'}
         </button>
       )}
     </article>
@@ -164,6 +189,8 @@ export function Community({
   const [feedError, setFeedError] = useState('')
   const [notice, setNotice] = useState('')
   const [deletingId, setDeletingId] = useState(null)
+  const [leavingId, setLeavingId] = useState(null)
+  const [dialog, setDialog] = useState(null)
 
   const [selectedFolder, setSelectedFolder] = useState('')
   const [ownItems, setOwnItems] = useState([])
@@ -409,16 +436,10 @@ export function Community({
   }
 
   async function handleDeleteShare(share) {
-    const label =
-      share.kind === 'folder' ? share.folder : `${share.item_count} Datei(en)`
-    if (
-      !window.confirm(
-        `Freigabe „${label}“ wirklich beenden? Die Dateien bleiben bei dir gespeichert.`,
-      )
-    ) {
-      return
-    }
+    setDialog({ type: 'end-share', share })
+  }
 
+  async function executeDeleteShare(share) {
     setDeletingId(share.id)
     setFeedError('')
     try {
@@ -426,6 +447,7 @@ export function Community({
       if (activeShare?.id === share.id) {
         closeShare()
       }
+      setDialog(null)
       await reloadFeed()
     } catch (error) {
       setFeedError(error.message)
@@ -434,15 +456,74 @@ export function Community({
     }
   }
 
-  function handleShared() {
-    const count = shareTarget?.kind === 'folder' ? 0 : selectedItems.length
+  async function handleLeaveShare(share) {
+    setDialog({ type: 'leave-share', share })
+  }
+
+  async function executeLeaveShare(share) {
+    setLeavingId(share.id)
+    setFeedError('')
+    try {
+      await leaveShare(share.id)
+      if (activeShare?.id === share.id) {
+        closeShare()
+      }
+      setDialog(null)
+      await reloadFeed()
+    } catch (error) {
+      setFeedError(error.message)
+    } finally {
+      setLeavingId(null)
+    }
+  }
+
+  async function handlePublicLink(share) {
+    if (share.public_link?.url) {
+      const full = absoluteUrl(share.public_link.url)
+      const copied = await copyText(full)
+      setNotice(copied ? 'Öffentlicher Link kopiert.' : full)
+      return
+    }
+    setDialog({ type: 'public-link', share })
+  }
+
+  async function executePublicLink(share) {
+    setFeedError('')
+    try {
+      const data = await createShareLink(share.id, 7)
+      const full = absoluteUrl(data.public_link?.url)
+      const copied = await copyText(full)
+      setNotice(
+        copied
+          ? 'Öffentlicher Link erstellt und kopiert. Er gilt 7 Tage.'
+          : full,
+      )
+      setDialog(null)
+      await reloadFeed()
+    } catch (error) {
+      setFeedError(error.message)
+    }
+  }
+
+  function handleShared(data) {
+    const shares = data?.shares || (data?.share ? [data.share] : [])
+    const count = shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
+      ? shares.length
+      : selectedItems.length
     setShareTarget(null)
     setSelectedKeys(new Set())
-    setNotice(
-      shareTarget?.kind === 'folder'
-        ? `Ordner „${selectedFolder}“ geteilt. Die Dateien bleiben nur einmal gespeichert.`
-        : `${count === 1 ? '1 Datei' : `${count} Dateien`} geteilt, ohne sie extra zu speichern.`,
-    )
+    const link = shares.find((entry) => entry.public_link)?.public_link
+    let message =
+      shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
+        ? count > 1
+          ? `${count} Ordner geteilt, ohne sie extra zu speichern.`
+          : `Ordner geteilt, ohne ihn extra zu speichern.`
+        : `${count === 1 ? '1 Datei' : `${count} Dateien`} geteilt, ohne sie extra zu speichern.`
+    if (link?.url) {
+      message += ` Link: ${absoluteUrl(link.url)}`
+      copyText(absoluteUrl(link.url))
+    }
+    setNotice(message)
     reloadFeed()
   }
 
@@ -454,23 +535,26 @@ export function Community({
     setShareTarget(null)
   }, [])
 
+  const closeDialog = useCallback(() => {
+    if (!deletingId && !leavingId) {
+      setDialog(null)
+    }
+  }, [deletingId, leavingId])
+
   return (
     <div className="app-shell">
       <Topbar
         username={username}
         onGoHome={onGoHome}
+        onGoCommunity={() => {}}
         center={
-          <nav className="topbar-nav" aria-label="Hauptnavigation">
-            <button className="nav-link" onClick={onGoUpload} type="button">
-              Upload
-            </button>
-            <button className="nav-link" onClick={onGoContent} type="button">
-              Inhalte
-            </button>
-            <button className="nav-link is-active" type="button">
-              Community
-            </button>
-          </nav>
+          <AppNav
+            current="community"
+            onNavigate={(page) => {
+              if (page === 'home') onGoUpload()
+              if (page === 'content') onGoContent()
+            }}
+          />
         }
         action={
           <button className="secondary-button" type="button" onClick={onLogout}>
@@ -513,8 +597,9 @@ export function Community({
                     : `Von ${activeShare.owner?.username}`}
                   {shareTotal !== null ? ` · ${shareTotal} Datei(en)` : ''}
                 </span>
+                {activeShare.note && <span>{activeShare.note}</span>}
               </div>
-              {activeShare.mine && (
+              {activeShare.mine ? (
                 <button
                   className="ghost-button share-delete"
                   disabled={deletingId === activeShare.id}
@@ -524,6 +609,15 @@ export function Community({
                   {deletingId === activeShare.id
                     ? 'Wird beendet…'
                     : 'Freigabe beenden'}
+                </button>
+              ) : (
+                <button
+                  className="ghost-button share-delete"
+                  disabled={leavingId === activeShare.id}
+                  onClick={() => handleLeaveShare(activeShare)}
+                  type="button"
+                >
+                  {leavingId === activeShare.id ? 'Wird verlassen…' : 'Verlassen'}
                 </button>
               )}
             </section>
@@ -593,6 +687,7 @@ export function Community({
                         <ShareCard
                           isDeleting={deletingId === share.id}
                           key={share.id}
+                          onCopyLink={() => handlePublicLink(share)}
                           onDelete={() => handleDeleteShare(share)}
                           onOpen={() => openShare(share)}
                           share={share}
@@ -614,19 +709,33 @@ export function Community({
                     Dateien werden nur freigegeben, nicht kopiert. Markiere
                     Fotos oder Videos — die Aktionen erscheinen unten.
                   </p>
-                  <button
-                    className="secondary-button"
-                    disabled={!selectedFolder}
-                    onClick={() =>
-                      setShareTarget({
-                        kind: 'folder',
-                        folder: selectedFolder,
-                      })
-                    }
-                    type="button"
-                  >
-                    Ganzen Ordner teilen
-                  </button>
+                  <div className="media-toolbar-row">
+                    <button
+                      className="secondary-button"
+                      disabled={!selectedFolder}
+                      onClick={() =>
+                        setShareTarget({
+                          kind: 'folder',
+                          folder: selectedFolder,
+                        })
+                      }
+                      type="button"
+                    >
+                      Ganzen Ordner teilen
+                    </button>
+                    <button
+                      className="ghost-button"
+                      onClick={() =>
+                        setShareTarget({
+                          kind: 'folders',
+                          folder: selectedFolder,
+                        })
+                      }
+                      type="button"
+                    >
+                      Mehrere Ordner teilen
+                    </button>
+                  </div>
                   {notice && <p className="form-success">{notice}</p>}
                 </section>
 
@@ -681,9 +790,9 @@ export function Community({
                   <div className="share-grid">
                     {incoming.map((share) => (
                       <ShareCard
-                        isDeleting={deletingId === share.id}
+                        isLeaving={leavingId === share.id}
                         key={share.id}
-                        onDelete={() => handleDeleteShare(share)}
+                        onLeave={() => handleLeaveShare(share)}
                         onOpen={() => openShare(share)}
                         share={share}
                       />
@@ -724,6 +833,51 @@ export function Community({
           kind={shareTarget.kind}
           onClose={closeShareDialog}
           onShared={handleShared}
+        />
+      )}
+
+      {dialog?.type === 'end-share' && (
+        <ConfirmDialog
+          busy={deletingId === dialog.share.id}
+          confirmLabel="Freigabe beenden"
+          danger
+          description={`Die Freigabe „${
+            dialog.share.kind === 'folder'
+              ? dialog.share.folder
+              : `${dialog.share.item_count} Datei(en)`
+          }“ wird beendet. Die Dateien bleiben bei dir gespeichert.`}
+          error={feedError}
+          onCancel={closeDialog}
+          onConfirm={() => executeDeleteShare(dialog.share)}
+          title="Freigabe beenden"
+        />
+      )}
+
+      {dialog?.type === 'leave-share' && (
+        <ConfirmDialog
+          busy={leavingId === dialog.share.id}
+          confirmLabel="Freigabe verlassen"
+          danger
+          description={`Du siehst „${
+            dialog.share.kind === 'folder'
+              ? dialog.share.folder
+              : `${dialog.share.item_count} Datei(en)`
+          }“ danach nicht mehr. Die Dateien bleiben beim Absender.`}
+          error={feedError}
+          onCancel={closeDialog}
+          onConfirm={() => executeLeaveShare(dialog.share)}
+          title="Freigabe verlassen"
+        />
+      )}
+
+      {dialog?.type === 'public-link' && (
+        <ConfirmDialog
+          confirmLabel="Link für 7 Tage erstellen"
+          description="Jeder mit dem Link kann die Freigabe ohne Konto sehen, bis sie nach 7 Tagen abläuft."
+          error={feedError}
+          onCancel={closeDialog}
+          onConfirm={() => executePublicLink(dialog.share)}
+          title="Öffentlichen Link erstellen"
         />
       )}
     </div>

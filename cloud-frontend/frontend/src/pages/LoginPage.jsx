@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { PasswordField } from '../components/PasswordField.jsx'
 
 export function LoginPage({ error, notice, isSubmitting, onLogin, onShowRegister, onShowResetPassword }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   function handleSubmit(event) {
     event.preventDefault()
@@ -33,14 +35,15 @@ export function LoginPage({ error, notice, isSubmitting, onLogin, onShowRegister
 
       <label>
         Passwort
-        <input
+        <PasswordField
           autoComplete="current-password"
           name="password"
           onChange={(event) => setPassword(event.target.value)}
+          onToggleVisible={() => setShowPassword((current) => !current)}
           placeholder="Passwort"
           required
-          type="password"
           value={password}
+          visible={showPassword}
         />
       </label>
 

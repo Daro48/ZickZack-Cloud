@@ -3,6 +3,7 @@ export function SelectionPopup({
   onClear,
   onSelectAll,
   onShare,
+  onDelete,
 }) {
   if (count < 1) {
     return null
@@ -22,9 +23,16 @@ export function SelectionPopup({
         <button className="ghost-button" onClick={onClear} type="button">
           Aufheben
         </button>
-        <button className="primary-button" onClick={onShare} type="button">
-          {count} teilen
-        </button>
+        {onDelete && (
+          <button className="danger-button" onClick={onDelete} type="button">
+            {count === 1 ? 'Datei löschen' : `${count} Dateien löschen`}
+          </button>
+        )}
+        {onShare && (
+          <button className="primary-button" onClick={onShare} type="button">
+            {count} teilen
+          </button>
+        )}
       </div>
     </div>
   )

@@ -88,6 +88,13 @@ def ensure_folder_column(cursor, table):
         print(f"[schema] {table}: Index {index_name} angelegt.")
 
 
+def ensure_column(cursor, table, column, definition):
+    if column_info(cursor, table, column) is not None:
+        return
+    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    print(f"[schema] {table}: Spalte {column} angelegt.")
+
+
 def ensure_share_tables(cursor):
     """Freigaben sind nur Verweise auf vorhandene Dateien, keine Kopien."""
     if not table_exists(cursor, "shares"):
@@ -98,6 +105,7 @@ def ensure_share_tables(cursor):
                 owner_id INT UNSIGNED NOT NULL,
                 kind ENUM('folder', 'items') NOT NULL,
                 folder VARCHAR(64) NULL,
+                note VARCHAR(280) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (owner_id)
                     REFERENCES users(id)
@@ -108,6 +116,8 @@ def ensure_share_tables(cursor):
             """
         )
         print("[schema] Tabelle shares angelegt.")
+    else:
+        ensure_column(cursor, "shares", "note", "VARCHAR(280) NULL")
 
     if not table_exists(cursor, "share_recipients"):
         cursor.execute(
@@ -145,6 +155,47 @@ def ensure_share_tables(cursor):
             """
         )
         print("[schema] Tabelle share_items angelegt.")
+
+    if not table_exists(cursor, "share_links"):
+        cursor.execute(
+            """
+            CREATE TABLE share_links (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                share_id BIGINT UNSIGNED NOT NULL,
+                token CHAR(32) NOT NULL UNIQUE,
+                expires_at DATETIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (share_id)
+                    REFERENCES shares(id)
+                    ON DELETE CASCADE,
+                INDEX idx_share_links_expires (expires_at)
+            )
+            """
+        )
+        print("[schema] Tabelle share_links angelegt.")
+
+    if not table_exists(cursor, "notifications"):
+        cursor.execute(
+            """
+            CREATE TABLE notifications (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id INT UNSIGNED NOT NULL,
+                share_id BIGINT UNSIGNED NULL,
+                message VARCHAR(255) NOT NULL,
+                read_at DATETIME NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id)
+                    REFERENCES users(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (share_id)
+                    REFERENCES shares(id)
+                    ON DELETE CASCADE,
+                INDEX idx_notifications_user_created (user_id, created_at),
+                INDEX idx_notifications_user_unread (user_id, read_at)
+            )
+            """
+        )
+        print("[schema] Tabelle notifications angelegt.")
 
 
 def apply_migrations(connection):

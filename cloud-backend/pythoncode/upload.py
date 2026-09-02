@@ -364,6 +364,11 @@ def upload_media():
 
         user_id = user["id"]
         username = user["username"]
+        from media import STORAGE_QUOTA_BYTES, used_storage_bytes
+
+        with connection.cursor() as cursor:
+            used_bytes = used_storage_bytes(cursor, user_id)
+        quota_bytes = STORAGE_QUOTA_BYTES
         root = ensure_user_media_root(username)
         if root is None:
             return (
@@ -405,8 +410,18 @@ def upload_media():
 
             file.save(absolute_path)
             size_bytes = absolute_path.stat().st_size
+            if quota_bytes > 0 and used_bytes + size_bytes > quota_bytes:
+                absolute_path.unlink(missing_ok=True)
+                errors.append(
+                    {
+                        "filename": file.filename,
+                        "message": "Speicherplatz ist voll.",
+                    }
+                )
+                continue
 
             create_media_thumbnail(media_kind, absolute_path, stored_path)
+            used_bytes += size_bytes
 
             table = "photos" if media_kind == "photo" else "videos"
             with connection.cursor() as cursor:
