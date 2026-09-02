@@ -170,10 +170,15 @@ export function Topbar({
 
       <div className="topbar-center">{center}</div>
 
-      <div className="topbar-meta">
+      <div className="topbar-end">
         {username && storage && (
           <div
+            aria-label={`Speicher ${percent} Prozent, ${formatBytes(used)} von ${formatBytes(quota)}`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={percent}
             className="storage-meter"
+            role="meter"
             title={`${formatBytes(used)} von ${formatBytes(quota)} belegt`}
           >
             <span className="storage-meter-label">
@@ -191,67 +196,69 @@ export function Topbar({
           </div>
         )}
 
-        {username && (
-          <div className="notify-wrap" ref={inboxRef}>
-            <button
-              aria-expanded={inboxOpen}
-              aria-label={
-                unread > 0
-                  ? `${unread} neue Mitteilungen`
-                  : 'Mitteilungen'
-              }
-              className={`notify-button${unread > 0 ? ' has-unread' : ''}`}
-              onClick={openInbox}
-              type="button"
-            >
-              Mitteilungen
-              {unread > 0 && <span className="notify-badge">{unread}</span>}
-            </button>
-            {inboxOpen && (
-              <div className="notify-panel" role="region" aria-label="Mitteilungen">
-                {notifications.length === 0 ? (
-                  <p className="notify-empty">Keine Benachrichtigungen.</p>
-                ) : (
-                  notifications.map((entry) => (
-                    <div className="notify-row" key={entry.id}>
-                      <button
-                        className={`notify-item${entry.read ? '' : ' is-unread'}`}
-                        onClick={() => {
-                          setInboxOpen(false)
-                          onGoCommunity?.()
-                        }}
-                        type="button"
-                      >
-                        {entry.message}
-                      </button>
-                      <button
-                        aria-label="Mitteilung löschen"
-                        className="notify-dismiss"
-                        disabled={deletingId === entry.id}
-                        onClick={() => handleDeleteNotification(entry)}
-                        type="button"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        <div className="topbar-meta">
+          {username && (
+            <div className="notify-wrap" ref={inboxRef}>
+              <button
+                aria-expanded={inboxOpen}
+                aria-label={
+                  unread > 0
+                    ? `${unread} neue Mitteilungen`
+                    : 'Mitteilungen'
+                }
+                className={`notify-button${unread > 0 ? ' has-unread' : ''}`}
+                onClick={openInbox}
+                type="button"
+              >
+                Mitteilungen
+                {unread > 0 && <span className="notify-badge">{unread}</span>}
+              </button>
+              {inboxOpen && (
+                <div className="notify-panel" role="region" aria-label="Mitteilungen">
+                  {notifications.length === 0 ? (
+                    <p className="notify-empty">Keine Benachrichtigungen.</p>
+                  ) : (
+                    notifications.map((entry) => (
+                      <div className="notify-row" key={entry.id}>
+                        <button
+                          className={`notify-item${entry.read ? '' : ' is-unread'}`}
+                          onClick={() => {
+                            setInboxOpen(false)
+                            onGoCommunity?.()
+                          }}
+                          type="button"
+                        >
+                          {entry.message}
+                        </button>
+                        <button
+                          aria-label="Mitteilung löschen"
+                          className="notify-dismiss"
+                          disabled={deletingId === entry.id}
+                          onClick={() => handleDeleteNotification(entry)}
+                          type="button"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
-        <button
-          aria-label={theme === 'light' ? 'Dunkles Design' : 'Helles Design'}
-          className="ghost-button theme-toggle"
-          onClick={() => setTheme((current) => toggleTheme(current))}
-          type="button"
-        >
-          {theme === 'light' ? 'Dunkel' : 'Hell'}
-        </button>
+          <button
+            aria-label={theme === 'light' ? 'Dunkles Design' : 'Helles Design'}
+            className="ghost-button theme-toggle"
+            onClick={() => setTheme((current) => toggleTheme(current))}
+            type="button"
+          >
+            {theme === 'light' ? 'Dunkel' : 'Hell'}
+          </button>
 
-        {username && <span className="topbar-user">{username.toUpperCase()}</span>}
-        {action}
+          {username && <span className="topbar-user">{username.toUpperCase()}</span>}
+          {action}
+        </div>
       </div>
     </header>
   )

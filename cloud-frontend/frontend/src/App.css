@@ -60,6 +60,15 @@ button.topbar-logo {
   min-width: 0;
 }
 
+.topbar-end {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  justify-self: end;
+  min-width: 0;
+}
+
 .topbar-nav {
   align-items: center;
   background: var(--nav-bg);
@@ -324,7 +333,6 @@ a.nav-link.is-active {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  justify-self: end;
   justify-content: flex-end;
   min-width: 0;
 }
@@ -1986,7 +1994,7 @@ a.nav-link.is-active {
 
 @media (max-width: 900px) {
   :root {
-    --topbar-h: 104px;
+    --topbar-h: 124px;
   }
 
   .auth-page {
@@ -2030,11 +2038,12 @@ a.nav-link.is-active {
   }
 
   .topbar {
-    gap: 10px;
+    gap: 8px 10px;
     grid-template-columns: 1fr auto;
     grid-template-areas:
       "logo meta"
-      "center center";
+      "center center"
+      "storage storage";
   }
 
   .topbar-logo {
@@ -2044,6 +2053,10 @@ a.nav-link.is-active {
   .topbar-center {
     grid-area: center;
     width: 100%;
+  }
+
+  .topbar-end {
+    display: contents;
   }
 
   .topbar-nav {
@@ -2070,8 +2083,42 @@ a.nav-link.is-active {
   }
 
   .topbar-meta {
-    gap: 8px;
+    flex-wrap: nowrap;
+    gap: 6px;
     grid-area: meta;
+  }
+
+  .topbar-user {
+    display: none;
+  }
+
+  .topbar .storage-meter {
+    align-items: center;
+    border-top: 1px solid var(--border);
+    display: grid;
+    gap: 10px;
+    grid-area: storage;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-width: 0;
+    padding-top: 8px;
+    width: 100%;
+  }
+
+  .topbar .storage-meter-track {
+    grid-column: 1;
+    grid-row: 1;
+    height: 4px;
+  }
+
+  .topbar .storage-meter-label {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+
+  .topbar .storage-meter-bytes {
+    display: none;
   }
 
   .picker-steps {
@@ -2127,7 +2174,7 @@ a.nav-link.is-active {
 
 @media (max-width: 640px) {
   :root {
-    --topbar-h: 100px;
+    --topbar-h: 120px;
     --page-pad: 14px;
   }
 
@@ -2509,6 +2556,10 @@ a.nav-link.is-active {
   white-space: nowrap;
 }
 
+.storage-meter-percent {
+  font-variant-numeric: tabular-nums;
+}
+
 .storage-meter-track {
   background: var(--mint-soft);
   border-radius: 999px;
@@ -2739,14 +2790,6 @@ a.nav-link.is-active {
 }
 
 @media (max-width: 640px) {
-  .storage-meter-bytes {
-    display: none;
-  }
-
-  .storage-meter {
-    min-width: 56px;
-  }
-
   .topbar-meta {
     max-width: 100%;
   }
