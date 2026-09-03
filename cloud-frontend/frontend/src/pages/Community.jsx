@@ -21,6 +21,9 @@ const PAGE_SIZE = 200
 const PREFETCH_MARGIN = '800px 0px'
 
 function recipientLabel(share) {
+  if (share.audience === 'everyone') {
+    return 'Alle im Feed'
+  }
   const names = (share.recipients || []).map((entry) => entry.username)
   if (names.length === 0) {
     return 'Keine Empfänger'
@@ -35,7 +38,11 @@ function ShareCard({ share, onOpen, onDelete, onLeave, isDeleting, isLeaving }) 
   const preview = share.preview || []
   const title =
     share.kind === 'folder' ? share.folder : `${share.item_count} Datei(en)`
-  const kicker = share.mine ? 'Von dir geteilt' : `Von ${share.owner?.username}`
+  const kicker = share.mine
+    ? share.audience === 'everyone'
+      ? 'Im Feed'
+      : 'Von dir geteilt'
+    : `Von ${share.owner?.username}`
 
   return (
     <article className="share-card">
@@ -475,14 +482,19 @@ export function Community({
     const count = shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
       ? shares.length
       : selectedItems.length
+    const postedToFeed = shares.some((share) => share.audience === 'everyone')
     setShareTarget(null)
     setSelectedKeys(new Set())
     setNotice(
-      shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
+      postedToFeed
         ? count > 1
-          ? `${count} Ordner geteilt, ohne sie extra zu speichern.`
-          : `Ordner geteilt, ohne ihn extra zu speichern.`
-        : `${count === 1 ? '1 Datei' : `${count} Dateien`} geteilt, ohne sie extra zu speichern.`,
+          ? `${count} Beiträge liegen im Feed, ohne extra gespeichert zu werden.`
+          : 'Im Feed geteilt, ohne extra gespeichert zu werden.'
+        : shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
+          ? count > 1
+            ? `${count} Ordner geteilt, ohne sie extra zu speichern.`
+            : `Ordner geteilt, ohne ihn extra zu speichern.`
+          : `${count === 1 ? '1 Datei' : `${count} Dateien`} geteilt, ohne sie extra zu speichern.`,
     )
     reloadFeed()
   }

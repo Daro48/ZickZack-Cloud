@@ -1,11 +1,16 @@
+from datetime import datetime, timezone
+
 from flask import Blueprint, jsonify, request
 from database import get_database_connection
 from media import (
     MAX_FOLDER_PAGE_SIZE,
+    cache_media_meta,
     count_folder_items,
     fetch_folder_page,
+    parse_media_type_filter,
     parse_non_negative_int,
     serialize_and_prime,
+    serialize_item,
 )
 from upload import list_user_folders, require_user, sanitize_folder_name
 
@@ -15,12 +20,15 @@ PREVIEW_LIMIT = 4
 MAX_SHARE_ITEMS = 500
 MAX_SHARE_FOLDERS = 50
 MAX_NOTE_LENGTH = 280
+MAX_FEED_PAGE = 24
+MAX_FEED_COMMENTS = 40
 SHARE_SELECT = """
     shares.id,
     shares.owner_id,
     shares.kind,
     shares.folder,
     shares.note,
+    shares.audience,
     shares.created_at,
     users.username AS owner_username
 """
@@ -44,10 +52,17 @@ def user_can_access_shared_media(
         cursor.execute(
             """
             SELECT 1
-            FROM share_recipients
-            INNER JOIN shares ON shares.id = share_recipients.share_id
-            WHERE share_recipients.user_id = %s
-              AND shares.owner_id = %s
+            FROM shares
+            WHERE shares.owner_id = %s
+              AND (
+                shares.audience = 'everyone'
+                OR EXISTS (
+                    SELECT 1
+                    FROM share_recipients
+                    WHERE share_recipients.share_id = shares.id
+                      AND share_recipients.user_id = %s
+                )
+              )
               AND (
                 (shares.kind = 'folder' AND shares.folder = %s)
                 OR EXISTS (
@@ -60,7 +75,7 @@ def user_can_access_shared_media(
               )
             LIMIT 1
             """,
-            (viewer_id, owner_id, folder, media_type, media_id),
+            (owner_id, viewer_id, folder, media_type, media_id),
         )
         return cursor.fetchone() is not None
 
@@ -79,8 +94,17 @@ def load_share_row(cursor, share_id):
     return cursor.fetchone()
 
 
-def viewer_can_see_share(cursor, share_id, viewer_id, owner_id):
-    if owner_id == viewer_id:
+def share_audience(share):
+    value = share.get("audience") if share else None
+    return "everyone" if value == "everyone" else "users"
+
+
+def viewer_can_see_share(cursor, share, viewer_id):
+    if not share:
+        return False
+    if share["owner_id"] == viewer_id:
+        return True
+    if share_audience(share) == "everyone":
         return True
     cursor.execute(
         """
@@ -88,7 +112,7 @@ def viewer_can_see_share(cursor, share_id, viewer_id, owner_id):
         FROM share_recipients
         WHERE share_id = %s AND user_id = %s
         """,
-        (share_id, viewer_id),
+        (share["id"], viewer_id),
     )
     return cursor.fetchone() is not None
 
@@ -220,6 +244,177 @@ def parse_note(value):
     return note
 
 
+def parse_audience(data):
+    raw = str(data.get("audience") or "users").strip().lower()
+    if raw in {"everyone", "feed"}:
+        return "everyone"
+    return "users"
+
+
+def insert_share(cursor, owner_id, kind, folder, note, audience):
+    cursor.execute(
+        """
+        INSERT INTO shares (owner_id, kind, folder, note, audience)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (owner_id, kind, folder, note, audience),
+    )
+    return cursor.lastrowid
+
+
+def feed_day_seed():
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat()
+    except Exception:
+        return datetime.now(timezone.utc).date().isoformat()
+
+
+def media_pair_clause(pairs):
+    placeholders = ", ".join(["(%s, %s)"] * len(pairs))
+    params = []
+    for media_type, media_id in pairs:
+        params.extend((media_type, int(media_id)))
+    return placeholders, params
+
+
+def parse_media_ref(data):
+    media_type = data.get("type")
+    if media_type not in {"photo", "video"}:
+        return None, None
+    try:
+        media_id = int(data.get("id"))
+    except (TypeError, ValueError):
+        return None, None
+    if media_id < 1:
+        return None, None
+    return media_type, media_id
+
+
+def load_live_media_row(cursor, media_type, media_id):
+    table = "photos" if media_type == "photo" else "videos"
+    cursor.execute(
+        f"""
+        SELECT id, user_id, folder
+        FROM {table}
+        WHERE id = %s AND deleted_at IS NULL
+        """,
+        (media_id,),
+    )
+    return cursor.fetchone()
+
+
+def media_is_in_feed(cursor, media_type, media_id, owner_id, folder):
+    cursor.execute(
+        """
+        SELECT 1
+        FROM shares
+        WHERE shares.owner_id = %s
+          AND shares.audience = 'everyone'
+          AND (
+            (shares.kind = 'folder' AND shares.folder = %s)
+            OR EXISTS (
+                SELECT 1
+                FROM share_items
+                WHERE share_items.share_id = shares.id
+                  AND share_items.media_type = %s
+                  AND share_items.media_id = %s
+            )
+          )
+        LIMIT 1
+        """,
+        (owner_id, folder, media_type, media_id),
+    )
+    return cursor.fetchone() is not None
+
+
+def require_feed_media(cursor, media_type, media_id):
+    row = load_live_media_row(cursor, media_type, media_id)
+    if not row:
+        return None
+    if not media_is_in_feed(
+        cursor, media_type, media_id, row["user_id"], row["folder"]
+    ):
+        return None
+    return row
+
+
+def serialize_feed_comment(row, viewer_id):
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "body": row["body"],
+        "created_at": format_created_at(row["created_at"]),
+        "mine": row["user_id"] == viewer_id,
+    }
+
+
+def attach_feed_social(cursor, viewer_id, items):
+    if not items:
+        return items
+
+    pairs = [(item["type"], item["id"]) for item in items]
+    placeholders, params = media_pair_clause(pairs)
+
+    cursor.execute(
+        f"""
+        SELECT media_type, media_id, COUNT(*) AS like_count
+        FROM feed_likes
+        WHERE (media_type, media_id) IN ({placeholders})
+        GROUP BY media_type, media_id
+        """,
+        params,
+    )
+    like_counts = {
+        (row["media_type"], row["media_id"]): int(row["like_count"])
+        for row in cursor.fetchall()
+    }
+
+    cursor.execute(
+        f"""
+        SELECT media_type, media_id
+        FROM feed_likes
+        WHERE user_id = %s AND (media_type, media_id) IN ({placeholders})
+        """,
+        (viewer_id, *params),
+    )
+    liked = {(row["media_type"], row["media_id"]) for row in cursor.fetchall()}
+
+    cursor.execute(
+        f"""
+        SELECT
+            comments.id,
+            comments.user_id,
+            comments.media_type,
+            comments.media_id,
+            comments.body,
+            comments.created_at,
+            users.username
+        FROM feed_comments AS comments
+        INNER JOIN users ON users.id = comments.user_id
+        WHERE (comments.media_type, comments.media_id) IN ({placeholders})
+        ORDER BY comments.created_at ASC, comments.id ASC
+        """,
+        params,
+    )
+    grouped = {}
+    for row in cursor.fetchall():
+        grouped.setdefault((row["media_type"], row["media_id"]), []).append(row)
+
+    for item in items:
+        key = (item["type"], item["id"])
+        comments = grouped.get(key, [])
+        item["like_count"] = like_counts.get(key, 0)
+        item["liked"] = key in liked
+        item["comment_count"] = len(comments)
+        item["comments"] = [
+            serialize_feed_comment(row, viewer_id)
+            for row in comments[-MAX_FEED_COMMENTS:]
+        ]
+    return items
+
+
 def notify_recipients(cursor, share, recipient_ids):
     if not recipient_ids:
         return
@@ -301,6 +496,7 @@ def hydrate_share(cursor, share, viewer_id):
         "kind": share["kind"],
         "folder": share["folder"],
         "note": share.get("note"),
+        "audience": share_audience(share),
         "owner": {
             "id": owner_id,
             "username": share["owner_username"],
@@ -325,6 +521,7 @@ def safe_hydrate_share(cursor, share, viewer_id):
             "kind": share["kind"],
             "folder": share["folder"],
             "note": share.get("note"),
+            "audience": share_audience(share),
             "owner": {
                 "id": share["owner_id"],
                 "username": share["owner_username"],
@@ -487,6 +684,7 @@ def list_community():
                     ON share_recipients.share_id = shares.id
                 INNER JOIN users ON users.id = shares.owner_id
                 WHERE share_recipients.user_id = %s
+                  AND shares.audience = 'users'
                 ORDER BY shares.created_at DESC, shares.id DESC
                 """,
                 (user["id"],),
@@ -524,6 +722,323 @@ def list_community():
         connection.close()
 
 
+@community_bp.get("/bp/community/feed")
+def list_feed():
+    offset = parse_non_negative_int(request.args.get("offset"), 0)
+    limit = parse_non_negative_int(request.args.get("limit"), 12)
+    limit = min(max(limit, 1), MAX_FEED_PAGE)
+    media_type = parse_media_type_filter(request.args.get("type"))
+    probe_limit = limit + 1
+    seed = feed_day_seed()
+
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        unions = []
+        union_params = []
+
+        def add_folder(table, type_label):
+            unions.append(
+                f"""
+                SELECT
+                    media.id,
+                    '{type_label}' AS type,
+                    media.original_name,
+                    media.stored_path,
+                    media.mime_type,
+                    media.size_bytes,
+                    media.created_at,
+                    media.captured_at,
+                    media.folder,
+                    media.user_id AS owner_id,
+                    owners.username AS shared_by,
+                    shares.note AS share_note,
+                    shares.created_at AS share_created_at,
+                    shares.id AS share_id
+                FROM {table} AS media
+                INNER JOIN shares
+                    ON shares.kind = 'folder'
+                   AND shares.owner_id = media.user_id
+                   AND shares.folder = media.folder
+                   AND shares.audience = 'everyone'
+                INNER JOIN users AS owners
+                    ON owners.id = shares.owner_id
+                WHERE media.deleted_at IS NULL
+                """
+            )
+
+        def add_items(table, type_label, media_key):
+            unions.append(
+                f"""
+                SELECT
+                    media.id,
+                    '{type_label}' AS type,
+                    media.original_name,
+                    media.stored_path,
+                    media.mime_type,
+                    media.size_bytes,
+                    media.created_at,
+                    media.captured_at,
+                    media.folder,
+                    media.user_id AS owner_id,
+                    owners.username AS shared_by,
+                    shares.note AS share_note,
+                    shares.created_at AS share_created_at,
+                    shares.id AS share_id
+                FROM {table} AS media
+                INNER JOIN share_items
+                    ON share_items.media_type = %s
+                   AND share_items.media_id = media.id
+                INNER JOIN shares
+                    ON shares.id = share_items.share_id
+                   AND shares.kind = 'items'
+                   AND shares.audience = 'everyone'
+                INNER JOIN users AS owners
+                    ON owners.id = shares.owner_id
+                WHERE media.deleted_at IS NULL
+                  AND media.user_id = shares.owner_id
+                """
+            )
+            union_params.append(media_key)
+
+        if media_type != "video":
+            add_folder("photos", "photo")
+            add_items("photos", "photo", "photo")
+        if media_type != "photo":
+            add_folder("videos", "video")
+            add_items("videos", "video", "video")
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    id,
+                    type,
+                    original_name,
+                    stored_path,
+                    mime_type,
+                    size_bytes,
+                    created_at,
+                    captured_at,
+                    folder,
+                    owner_id,
+                    shared_by,
+                    share_note,
+                    share_id
+                FROM (
+                    SELECT
+                        ranked.*,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY type, id
+                            ORDER BY share_created_at DESC, share_id DESC
+                        ) AS row_num
+                    FROM (
+                        {" UNION ALL ".join(unions)}
+                    ) AS ranked
+                ) AS feed
+                WHERE row_num = 1
+                ORDER BY MD5(CONCAT(%s, '-', type, '-', id)), type, id
+                LIMIT %s OFFSET %s
+                """,
+                (*union_params, seed, probe_limit, offset),
+            )
+            rows = cursor.fetchall()
+            has_more = len(rows) > limit
+            rows = rows[:limit]
+            items = []
+            for row in rows:
+                cache_media_meta(
+                    row["owner_id"],
+                    row["type"],
+                    row["id"],
+                    {
+                        "stored_path": row["stored_path"],
+                        "mime_type": row["mime_type"],
+                        "original_name": row["original_name"],
+                    },
+                )
+                item = serialize_item(row)
+                item["note"] = row.get("share_note")
+                item["mine"] = row["owner_id"] == user["id"]
+                items.append(item)
+            attach_feed_social(cursor, user["id"], items)
+
+        return jsonify(
+            {
+                "status": "ok",
+                "seed": seed,
+                "items": items,
+                "has_more": has_more,
+            }
+        )
+    finally:
+        connection.close()
+
+
+@community_bp.post("/bp/community/feed/like")
+def toggle_feed_like():
+    data = request.get_json(silent=True) or {}
+    media_type, media_id = parse_media_ref(data)
+    if not media_type:
+        return jsonify({"status": "error", "message": "Ungültige Datei."}), 400
+
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        with connection.cursor() as cursor:
+            if not require_feed_media(cursor, media_type, media_id):
+                return (
+                    jsonify({"status": "error", "message": "Nicht gefunden."}),
+                    404,
+                )
+            cursor.execute(
+                """
+                DELETE FROM feed_likes
+                WHERE user_id = %s AND media_type = %s AND media_id = %s
+                """,
+                (user["id"], media_type, media_id),
+            )
+            liked = cursor.rowcount < 1
+            if liked:
+                cursor.execute(
+                    """
+                    INSERT INTO feed_likes (user_id, media_type, media_id)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (user["id"], media_type, media_id),
+                )
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS like_count
+                FROM feed_likes
+                WHERE media_type = %s AND media_id = %s
+                """,
+                (media_type, media_id),
+            )
+            like_count = int((cursor.fetchone() or {}).get("like_count") or 0)
+
+        connection.commit()
+        return jsonify(
+            {
+                "status": "ok",
+                "liked": liked,
+                "like_count": like_count,
+            }
+        )
+    finally:
+        connection.close()
+
+
+@community_bp.post("/bp/community/feed/comments")
+def create_feed_comment():
+    data = request.get_json(silent=True) or {}
+    media_type, media_id = parse_media_ref(data)
+    body = parse_note(data.get("body") or data.get("comment"))
+    if not media_type:
+        return jsonify({"status": "error", "message": "Ungültige Datei."}), 400
+    if not body:
+        return (
+            jsonify({"status": "error", "message": "Bitte einen Kommentar schreiben."}),
+            400,
+        )
+
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        with connection.cursor() as cursor:
+            if not require_feed_media(cursor, media_type, media_id):
+                return (
+                    jsonify({"status": "error", "message": "Nicht gefunden."}),
+                    404,
+                )
+            cursor.execute(
+                """
+                INSERT INTO feed_comments (user_id, media_type, media_id, body)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (user["id"], media_type, media_id, body),
+            )
+            comment_id = cursor.lastrowid
+            cursor.execute(
+                """
+                SELECT
+                    comments.id,
+                    comments.user_id,
+                    comments.body,
+                    comments.created_at,
+                    users.username
+                FROM feed_comments AS comments
+                INNER JOIN users ON users.id = comments.user_id
+                WHERE comments.id = %s
+                """,
+                (comment_id,),
+            )
+            row = cursor.fetchone()
+
+        connection.commit()
+        return jsonify(
+            {
+                "status": "ok",
+                "comment": serialize_feed_comment(row, user["id"]),
+            }
+        )
+    finally:
+        connection.close()
+
+
+@community_bp.delete("/bp/community/feed/comments/<int:comment_id>")
+def delete_feed_comment(comment_id):
+    connection = get_database_connection()
+    try:
+        user = require_user(connection)
+        if not user:
+            return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    comments.id,
+                    comments.user_id,
+                    comments.media_type,
+                    comments.media_id
+                FROM feed_comments AS comments
+                WHERE comments.id = %s
+                """,
+                (comment_id,),
+            )
+            comment = cursor.fetchone()
+            if not comment:
+                return jsonify({"status": "error", "message": "Nicht gefunden."}), 404
+
+            media = load_live_media_row(
+                cursor, comment["media_type"], comment["media_id"]
+            )
+            is_author = comment["user_id"] == user["id"]
+            is_owner = bool(media) and media["user_id"] == user["id"]
+            if not is_author and not is_owner:
+                return jsonify({"status": "error", "message": "Nicht gefunden."}), 404
+
+            cursor.execute(
+                "DELETE FROM feed_comments WHERE id = %s",
+                (comment_id,),
+            )
+
+        connection.commit()
+        return jsonify({"status": "ok"})
+    finally:
+        connection.close()
+
+
 @community_bp.post("/bp/community/shares")
 def create_share():
     connection = get_database_connection()
@@ -541,19 +1056,23 @@ def create_share():
             )
 
         note = parse_note(data.get("note"))
+        audience = parse_audience(data)
 
         with connection.cursor() as cursor:
-            recipient_ids = parse_recipient_ids(cursor, user["id"], data)
-            if not recipient_ids:
-                return (
-                    jsonify(
-                        {
-                            "status": "error",
-                            "message": "Bitte mindestens einen User wählen.",
-                        }
-                    ),
-                    400,
-                )
+            if audience == "everyone":
+                recipient_ids = []
+            else:
+                recipient_ids = parse_recipient_ids(cursor, user["id"], data)
+                if not recipient_ids:
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "message": "Bitte mindestens einen User wählen.",
+                            }
+                        ),
+                        400,
+                    )
 
             created_ids = []
             if kind in {"folder", "folders"}:
@@ -607,14 +1126,9 @@ def create_share():
                             400,
                         )
 
-                    cursor.execute(
-                        """
-                        INSERT INTO shares (owner_id, kind, folder, note)
-                        VALUES (%s, 'folder', %s, %s)
-                        """,
-                        (user["id"], folder_name, note),
+                    share_id = insert_share(
+                        cursor, user["id"], "folder", folder_name, note, audience
                     )
-                    share_id = cursor.lastrowid
                     if not share_id:
                         return (
                             jsonify(
@@ -625,17 +1139,18 @@ def create_share():
                             ),
                             500,
                         )
-                    insert_recipients(cursor, share_id, recipient_ids)
-                    if not recipients_saved(cursor, share_id, recipient_ids):
-                        return (
-                            jsonify(
-                                {
-                                    "status": "error",
-                                    "message": "Empfänger konnten nicht gespeichert werden.",
-                                }
-                            ),
-                            500,
-                        )
+                    if audience == "users":
+                        insert_recipients(cursor, share_id, recipient_ids)
+                        if not recipients_saved(cursor, share_id, recipient_ids):
+                            return (
+                                jsonify(
+                                    {
+                                        "status": "error",
+                                        "message": "Empfänger konnten nicht gespeichert werden.",
+                                    }
+                                ),
+                                500,
+                            )
                     if folder_media:
                         cursor.executemany(
                             """
@@ -655,14 +1170,9 @@ def create_share():
                 if error_message:
                     return jsonify({"status": "error", "message": error_message}), 400
 
-                cursor.execute(
-                    """
-                    INSERT INTO shares (owner_id, kind, folder, note)
-                    VALUES (%s, 'items', NULL, %s)
-                    """,
-                    (user["id"], note),
+                share_id = insert_share(
+                    cursor, user["id"], "items", None, note, audience
                 )
-                share_id = cursor.lastrowid
                 cursor.executemany(
                     """
                     INSERT INTO share_items (share_id, media_type, media_id)
@@ -673,17 +1183,18 @@ def create_share():
                         for media_type, media_id in owned
                     ],
                 )
-                insert_recipients(cursor, share_id, recipient_ids)
-                if not recipients_saved(cursor, share_id, recipient_ids):
-                    return (
-                        jsonify(
-                            {
-                                "status": "error",
-                                "message": "Empfänger konnten nicht gespeichert werden.",
-                            }
-                        ),
-                        500,
-                    )
+                if audience == "users":
+                    insert_recipients(cursor, share_id, recipient_ids)
+                    if not recipients_saved(cursor, share_id, recipient_ids):
+                        return (
+                            jsonify(
+                                {
+                                    "status": "error",
+                                    "message": "Empfänger konnten nicht gespeichert werden.",
+                                }
+                            ),
+                            500,
+                        )
                 created_ids.append((share_id, recipient_ids))
 
             notified = []
@@ -722,6 +1233,7 @@ def create_share():
                             "kind": share["kind"],
                             "folder": share["folder"],
                             "note": share.get("note"),
+                            "audience": share_audience(share),
                             "owner": {
                                 "id": share["owner_id"],
                                 "username": share["owner_username"],
@@ -770,9 +1282,7 @@ def list_share_media(share_id):
 
         with connection.cursor() as cursor:
             share = load_share_row(cursor, share_id)
-            if not share or not viewer_can_see_share(
-                cursor, share_id, user["id"], share["owner_id"]
-            ):
+            if not share or not viewer_can_see_share(cursor, share, user["id"]):
                 return (
                     jsonify({"status": "error", "message": "Nicht gefunden."}),
                     404,

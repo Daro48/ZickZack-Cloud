@@ -1677,6 +1677,7 @@ def list_timeline():
                     ON shares.kind = 'folder'
                    AND shares.owner_id = media.user_id
                    AND shares.folder = media.folder
+                   AND shares.audience = 'users'
                 INNER JOIN share_recipients
                     ON share_recipients.share_id = shares.id
                    AND share_recipients.user_id = %s
@@ -1711,6 +1712,7 @@ def list_timeline():
                 INNER JOIN shares
                     ON shares.id = share_items.share_id
                    AND shares.kind = 'items'
+                   AND shares.audience = 'users'
                 INNER JOIN share_recipients
                     ON share_recipients.share_id = shares.id
                    AND share_recipients.user_id = %s

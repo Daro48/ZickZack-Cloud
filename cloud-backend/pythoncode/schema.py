@@ -140,18 +140,31 @@ def ensure_share_tables(cursor):
                 kind ENUM('folder', 'items') NOT NULL,
                 folder VARCHAR(64) NULL,
                 note VARCHAR(280) NULL,
+                audience ENUM('users', 'everyone') NOT NULL DEFAULT 'users',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (owner_id)
                     REFERENCES users(id)
                     ON DELETE CASCADE,
                 INDEX idx_shares_owner_created (owner_id, created_at),
-                INDEX idx_shares_owner_folder (owner_id, kind, folder)
+                INDEX idx_shares_owner_folder (owner_id, kind, folder),
+                INDEX idx_shares_audience (audience)
             )
             """
         )
         print("[schema] Tabelle shares angelegt.")
     else:
         ensure_column(cursor, "shares", "note", "VARCHAR(280) NULL")
+        ensure_column(
+            cursor,
+            "shares",
+            "audience",
+            "ENUM('users', 'everyone') NOT NULL DEFAULT 'users'",
+        )
+        if not index_exists(cursor, "shares", "idx_shares_audience"):
+            cursor.execute(
+                "CREATE INDEX idx_shares_audience ON shares (audience)"
+            )
+            print("[schema] shares: Index idx_shares_audience angelegt.")
 
     if not table_exists(cursor, "share_recipients"):
         cursor.execute(
@@ -216,6 +229,46 @@ def ensure_share_tables(cursor):
         print("[schema] Tabelle notifications angelegt.")
 
 
+def ensure_feed_tables(cursor):
+    """Likes und Kommentare nur für den gemeinsamen Feed, ohne Dateien zu kopieren."""
+    if not table_exists(cursor, "feed_likes"):
+        cursor.execute(
+            """
+            CREATE TABLE feed_likes (
+                user_id INT UNSIGNED NOT NULL,
+                media_type ENUM('photo', 'video') NOT NULL,
+                media_id BIGINT UNSIGNED NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, media_type, media_id),
+                FOREIGN KEY (user_id)
+                    REFERENCES users(id)
+                    ON DELETE CASCADE,
+                INDEX idx_feed_likes_media (media_type, media_id)
+            )
+            """
+        )
+        print("[schema] Tabelle feed_likes angelegt.")
+
+    if not table_exists(cursor, "feed_comments"):
+        cursor.execute(
+            """
+            CREATE TABLE feed_comments (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id INT UNSIGNED NOT NULL,
+                media_type ENUM('photo', 'video') NOT NULL,
+                media_id BIGINT UNSIGNED NOT NULL,
+                body VARCHAR(280) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id)
+                    REFERENCES users(id)
+                    ON DELETE CASCADE,
+                INDEX idx_feed_comments_media_created (media_type, media_id, created_at)
+            )
+            """
+        )
+        print("[schema] Tabelle feed_comments angelegt.")
+
+
 def apply_migrations(connection):
     with connection.cursor() as cursor:
         ensure_session_expiry_index(cursor)
@@ -223,6 +276,7 @@ def apply_migrations(connection):
             ensure_folder_column(cursor, table)
         ensure_media_lifecycle_columns(cursor)
         ensure_share_tables(cursor)
+        ensure_feed_tables(cursor)
     connection.commit()
     try:
         from media import purge_expired_trash

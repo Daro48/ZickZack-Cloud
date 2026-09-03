@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppNav } from '../components/AppNav.jsx'
+import { FeedPost } from '../components/FeedPost.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
 import { MediaViewer } from '../components/MediaViewer.jsx'
-import { SelectMenu } from '../components/SelectMenu.jsx'
 import { Topbar } from '../components/Topbar.jsx'
-import { mediaKey } from '../services/communityApi.js'
+import { fetchFeed, mediaKey } from '../services/communityApi.js'
 import { fetchTimelineMedia } from '../services/mediaApi.js'
 import { formatDayHeading } from '../utils/format.js'
 
 const PAGE_SIZE = 80
+const FEED_PAGE_SIZE = 12
 const PREFETCH_MARGIN = '800px 0px'
-
-const TYPE_OPTIONS = [
-  { value: 'all', label: 'Alle' },
-  { value: 'photo', label: 'Fotos' },
-  { value: 'video', label: 'Videos' },
-]
 
 function groupByDay(items) {
   const groups = []
@@ -35,34 +30,15 @@ function groupByDay(items) {
   return groups
 }
 
-export function TimelinePage({
-  username,
-  onLogout,
-  onGoStart,
-  onGoUpload,
-  onGoContent,
-  onGoCommunity,
-}) {
-  const [query, setQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [typeFilter, setTypeFilter] = useState('all')
+function usePagedMedia({ load, resetDeps, enabled = true }) {
   const [items, setItems] = useState([])
   const [hasMore, setHasMore] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [viewerIndex, setViewerIndex] = useState(null)
   const loadIdRef = useRef(0)
   const isLoadingRef = useRef(false)
   const loadedCountRef = useRef(0)
-  const sentinelRef = useRef(null)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedQuery(query.trim())
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [query])
 
   const resetMedia = useCallback(() => {
     loadIdRef.current += 1
@@ -73,11 +49,10 @@ export function TimelinePage({
     setHasLoaded(false)
     setError('')
     setIsLoading(false)
-    setViewerIndex(null)
   }, [])
 
   const loadPage = useCallback(async () => {
-    if (isLoadingRef.current) {
+    if (!enabled || isLoadingRef.current) {
       return
     }
 
@@ -87,12 +62,7 @@ export function TimelinePage({
     setError('')
 
     try {
-      const data = await fetchTimelineMedia({
-        offset: loadedCountRef.current,
-        limit: PAGE_SIZE,
-        query: debouncedQuery,
-        type: typeFilter,
-      })
+      const data = await load(loadedCountRef.current)
       if (requestId !== loadIdRef.current) {
         return
       }
@@ -105,6 +75,7 @@ export function TimelinePage({
     } catch (loadError) {
       if (requestId === loadIdRef.current) {
         setError(loadError.message)
+        setHasLoaded(true)
       }
     } finally {
       if (requestId === loadIdRef.current) {
@@ -112,24 +83,38 @@ export function TimelinePage({
       }
       isLoadingRef.current = false
     }
-  }, [debouncedQuery, typeFilter])
+  }, [enabled, load])
+
+  const resetKey = resetDeps.join('\0')
 
   useEffect(() => {
     resetMedia()
-  }, [debouncedQuery, typeFilter, resetMedia])
-
-  const canLoadMore = hasLoaded && hasMore
+  }, [resetMedia, resetKey])
 
   useEffect(() => {
-    if (hasLoaded || isLoading) {
+    if (!enabled || hasLoaded || isLoading) {
       return
     }
     loadPage()
-  }, [hasLoaded, isLoading, loadPage])
+  }, [enabled, hasLoaded, isLoading, loadPage])
+
+  return {
+    items,
+    setItems,
+    hasMore,
+    hasLoaded,
+    isLoading,
+    error,
+    loadPage,
+  }
+}
+
+function useScrollSentinel(enabled, loadPage) {
+  const sentinelRef = useRef(null)
 
   useEffect(() => {
     const node = sentinelRef.current
-    if (!node || !canLoadMore) {
+    if (!node || !enabled) {
       return undefined
     }
 
@@ -143,10 +128,79 @@ export function TimelinePage({
     )
     observer.observe(node)
     return () => observer.disconnect()
-  }, [canLoadMore, loadPage])
+  }, [enabled, loadPage])
 
-  const groups = useMemo(() => groupByDay(items), [items])
-  const closeViewer = useCallback(() => setViewerIndex(null), [])
+  return sentinelRef
+}
+
+export function TimelinePage({
+  username,
+  onLogout,
+  onGoStart,
+  onGoUpload,
+  onGoContent,
+  onGoCommunity,
+}) {
+  const [tab, setTab] = useState('shared')
+  const [viewer, setViewer] = useState(null)
+
+  const loadShared = useCallback(
+    (offset) =>
+      fetchTimelineMedia({
+        offset,
+        limit: PAGE_SIZE,
+      }),
+    [],
+  )
+
+  const loadFeed = useCallback(
+    (offset) => fetchFeed({ offset, limit: FEED_PAGE_SIZE }),
+    [],
+  )
+
+  const shared = usePagedMedia({
+    load: loadShared,
+    resetDeps: [],
+  })
+  const feed = usePagedMedia({
+    enabled: tab === 'feed',
+    load: loadFeed,
+    resetDeps: [],
+  })
+
+  const sharedSentinelRef = useScrollSentinel(
+    tab === 'shared' && shared.hasLoaded && shared.hasMore,
+    shared.loadPage,
+  )
+  const feedSentinelRef = useScrollSentinel(
+    tab === 'feed' && feed.hasLoaded && feed.hasMore,
+    feed.loadPage,
+  )
+
+  const groups = useMemo(() => groupByDay(shared.items), [shared.items])
+  const viewerItems =
+    viewer?.source === 'feed'
+      ? feed.items
+      : viewer?.source === 'shared'
+        ? shared.items
+        : []
+  const viewerIndex = viewer?.index ?? null
+
+  function updateFeedItem(nextItem) {
+    feed.setItems((current) =>
+      current.map((item) =>
+        mediaKey(item) === mediaKey(nextItem) ? nextItem : item,
+      ),
+    )
+  }
+
+  function selectTab(next) {
+    if (next === tab) {
+      return
+    }
+    setViewer(null)
+    setTab(next)
+  }
 
   return (
     <div className="app-shell">
@@ -175,85 +229,135 @@ export function TimelinePage({
         <header className="page-header">
           <div>
             <p className="eyebrow">Cloud</p>
-            <h1>Mit dir geteilt</h1>
+            <h1>{tab === 'feed' ? 'Feed' : 'Mit dir geteilt'}</h1>
           </div>
         </header>
 
-        <section className="media-toolbar" aria-label="Filter">
-          <div className="media-toolbar-row is-filters">
-            <label className="folder-field media-search">
-              <span className="folder-field-label">Suche</span>
-              <input
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Name"
-                type="search"
-                value={query}
-              />
-            </label>
-            <SelectMenu
-              accent
-              label="Typ"
-              onChange={setTypeFilter}
-              options={TYPE_OPTIONS}
-              value={typeFilter}
-            />
-          </div>
-        </section>
+        <div className="community-tabs" role="tablist" aria-label="Start">
+          <button
+            aria-selected={tab === 'shared'}
+            className={`community-tab${tab === 'shared' ? ' is-active' : ''}`}
+            onClick={() => selectTab('shared')}
+            role="tab"
+            type="button"
+          >
+            Mit dir geteilt
+          </button>
+          <button
+            aria-selected={tab === 'feed'}
+            className={`community-tab${tab === 'feed' ? ' is-active' : ''}`}
+            onClick={() => selectTab('feed')}
+            role="tab"
+            type="button"
+          >
+            Feed
+          </button>
+        </div>
 
-        <section className="media-section" aria-label="Mit dir geteilte Dateien">
-          {error && <p className="form-error">{error}</p>}
+        {tab === 'shared' && (
+            <section className="media-section" aria-label="Mit dir geteilte Dateien">
+              {shared.error && <p className="form-error">{shared.error}</p>}
 
-          {hasLoaded && items.length === 0 ? (
-            <div className="empty-panel">
-              <p>Noch nichts mit dir geteilt.</p>
-              <span>
-                Wenn jemand Fotos oder Videos mit dir teilt, erscheinen sie
-                hier.
-              </span>
-            </div>
-          ) : items.length > 0 ? (
-            <div className="timeline-feed">
-              {groups.map((group) => (
-                <section className="timeline-day" key={group.key || group.label}>
-                  <h2 className="timeline-day-title">{group.label}</h2>
-                  <div className="media-grid">
-                    {group.items.map((item) => {
-                      const index = items.indexOf(item)
-                      return (
-                        <MediaCard
-                          item={item}
-                          key={mediaKey(item)}
-                          onOpen={() => setViewerIndex(index)}
-                        />
-                      )
-                    })}
-                  </div>
-                </section>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-panel">
-              <p>Lädt…</p>
-              <span>Fotos und Videos, die mit dir geteilt wurden, werden geladen.</span>
-            </div>
-          )}
+              {shared.hasLoaded && shared.items.length === 0 && !shared.error ? (
+                <div className="empty-panel">
+                  <p>Noch nichts mit dir geteilt.</p>
+                  <span>
+                    Wenn jemand Fotos oder Videos nur mit dir teilt, erscheinen
+                    sie hier.
+                  </span>
+                </div>
+              ) : shared.items.length > 0 ? (
+                <div className="timeline-feed">
+                  {groups.map((group) => (
+                    <section className="timeline-day" key={group.key || group.label}>
+                      <h2 className="timeline-day-title">{group.label}</h2>
+                      <div className="media-grid">
+                        {group.items.map((item) => {
+                          const index = shared.items.indexOf(item)
+                          return (
+                            <MediaCard
+                              item={item}
+                              key={mediaKey(item)}
+                              onOpen={() => setViewer({ source: 'shared', index })}
+                            />
+                          )
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              ) : shared.error ? null : (
+                <div className="empty-panel">
+                  <p>Lädt…</p>
+                  <span>
+                    Fotos und Videos, die mit dir geteilt wurden, werden geladen.
+                  </span>
+                </div>
+              )}
 
-          {canLoadMore && <div aria-hidden="true" ref={sentinelRef} />}
+              {shared.hasLoaded && shared.hasMore && (
+                <div aria-hidden="true" ref={sharedSentinelRef} />
+              )}
 
-          {isLoading && (
-            <div className="media-more">
-              <span className="media-more-status">Lädt weitere Dateien…</span>
-            </div>
-          )}
-        </section>
+              {shared.isLoading && (
+                <div className="media-more">
+                  <span className="media-more-status">Lädt weitere Dateien…</span>
+                </div>
+              )}
+            </section>
+        )}
+
+        {tab === 'feed' && (
+          <section className="media-section is-feed" aria-label="Feed">
+            {feed.error && <p className="form-error">{feed.error}</p>}
+
+            {feed.hasLoaded && feed.items.length === 0 && !feed.error ? (
+              <div className="empty-panel">
+                <p>Noch nichts im Feed.</p>
+                <span>
+                  Wenn jemand Dateien mit allen teilt, erscheinen sie hier —
+                  jeden Tag in neuer Reihenfolge.
+                </span>
+              </div>
+            ) : feed.items.length > 0 ? (
+              <div className="community-feed">
+                {feed.items.map((item, index) => (
+                  <FeedPost
+                    item={item}
+                    key={mediaKey(item)}
+                    onItemChange={updateFeedItem}
+                    onOpen={() => setViewer({ source: 'feed', index })}
+                  />
+                ))}
+              </div>
+            ) : feed.error ? null : (
+              <div className="empty-panel">
+                <p>Lädt…</p>
+                <span>Der Feed wird geladen.</span>
+              </div>
+            )}
+
+            {feed.hasLoaded && feed.hasMore && (
+              <div aria-hidden="true" ref={feedSentinelRef} />
+            )}
+
+            {feed.isLoading && (
+              <div className="media-more">
+                <span className="media-more-status">Lädt weitere Beiträge…</span>
+              </div>
+            )}
+          </section>
+        )}
       </main>
 
-      {viewerIndex !== null && items[viewerIndex] && (
+      {viewerIndex !== null && viewerItems[viewerIndex] && (
         <MediaViewer
           index={viewerIndex}
-          items={items}
-          onClose={closeViewer}
-          onIndexChange={setViewerIndex}
+          items={viewerItems}
+          onClose={() => setViewer(null)}
+          onIndexChange={(index) =>
+            setViewer((current) => (current ? { ...current, index } : current))
+          }
         />
       )}
     </div>

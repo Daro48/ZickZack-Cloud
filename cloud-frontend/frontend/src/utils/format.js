@@ -15,6 +15,23 @@ export function formatDayHeading(value) {
   })
 }
 
+export function formatDateTime(value) {
+  if (!value) {
+    return ''
+  }
+  const raw = String(value).replace(' ', 'T')
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  return date.toLocaleString('de-DE', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) {
     return '—'

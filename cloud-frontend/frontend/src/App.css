@@ -512,6 +512,8 @@ a.nav-link.is-active {
 .share-user-option:focus-visible,
 .media-check:focus-visible,
 .notify-button:focus-visible,
+.feed-post-media:focus-visible,
+.feed-comment-delete:focus-visible,
 .notify-item:focus-visible,
 .notify-dismiss:focus-visible {
   outline: 2px solid var(--acid-mint);
@@ -2900,4 +2902,201 @@ a.nav-link.is-active {
   font-weight: 700;
   letter-spacing: 0.01em;
   margin: 0 0 12px;
+}
+
+.community-feed {
+  display: grid;
+  gap: 0;
+  margin-inline: auto;
+  max-width: 560px;
+  width: 100%;
+}
+
+.media-section.is-feed {
+  justify-items: center;
+}
+
+.media-section.is-feed .empty-panel,
+.media-section.is-feed .form-error,
+.media-section.is-feed .media-more {
+  max-width: 560px;
+  width: 100%;
+}
+
+.feed-post {
+  display: grid;
+  gap: 0;
+  padding: 0 0 28px;
+}
+
+.feed-post + .feed-post {
+  border-top: 1px solid var(--border);
+  padding-top: 28px;
+}
+
+.feed-post-media {
+  background: var(--inset);
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: block;
+  overflow: hidden;
+  padding: 0;
+  width: 100%;
+}
+
+.feed-post-image {
+  aspect-ratio: 4 / 3;
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+.feed-post-media .media-video-preview {
+  aspect-ratio: 4 / 3;
+  width: 100%;
+}
+
+.feed-post-body {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.feed-post-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+.feed-post-meta {
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  font-weight: 700;
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.feed-post-note {
+  margin: 0;
+}
+
+.feed-like {
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.feed-like-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.feed-like.is-active {
+  border-color: var(--accent-border);
+  color: var(--acid-mint);
+}
+
+.feed-comments {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.feed-comment {
+  align-items: start;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.feed-comment.is-empty {
+  color: var(--text-muted);
+  display: block;
+  font-size: 0.86rem;
+}
+
+.feed-comment-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.feed-comment-copy span {
+  overflow-wrap: anywhere;
+}
+
+.feed-comment-copy time {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.feed-comment-delete {
+  background: transparent;
+  border: 0;
+  color: var(--error);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 0 4px;
+}
+
+.feed-comment-form {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.feed-comment-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.feed-comment-input {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-strong);
+  font: inherit;
+  min-height: var(--control-h);
+  padding: 10px 14px;
+  width: 100%;
+}
+
+.feed-comment-input:focus {
+  border-color: var(--acid-mint);
+  box-shadow: 0 0 0 3px var(--mint-soft);
+  outline: none;
+}
+
+.feed-comment-form .form-error {
+  grid-column: 1 / -1;
+}
+
+.feed-comment-form .secondary-button {
+  min-height: var(--control-h);
+  padding: 6px 14px;
+}
+
+@media (max-width: 640px) {
+  .feed-comment-form {
+    grid-template-columns: 1fr;
+  }
+
+  .feed-comment-form .secondary-button {
+    justify-self: start;
+  }
+}
+
+.share-dialog .share-audience {
+  margin: 0;
 }

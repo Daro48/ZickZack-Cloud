@@ -86,3 +86,46 @@ export async function markNotificationsRead() {
   })
   return readJson(response, 'Benachrichtigungen konnten nicht gelesen werden.')
 }
+
+export async function fetchFeed({ offset = 0, limit = 12 } = {}) {
+  const params = new URLSearchParams({
+    offset: String(offset),
+    limit: String(limit),
+  })
+  const response = await fetch(`/bp/community/feed?${params.toString()}`, {
+    credentials: 'include',
+  })
+  return readJson(response, 'Feed konnte nicht geladen werden.')
+}
+
+export async function toggleFeedLike(item) {
+  const response = await fetch('/bp/community/feed/like', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ type: item.type, id: item.id }),
+  })
+  return readJson(response, 'Like konnte nicht gespeichert werden.')
+}
+
+export async function createFeedComment(item, body) {
+  const response = await fetch('/bp/community/feed/comments', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ type: item.type, id: item.id, body }),
+  })
+  return readJson(response, 'Kommentar konnte nicht gespeichert werden.')
+}
+
+export async function deleteFeedComment(commentId) {
+  const response = await fetch(`/bp/community/feed/comments/${commentId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  return readJson(response, 'Kommentar konnte nicht gelöscht werden.')
+}

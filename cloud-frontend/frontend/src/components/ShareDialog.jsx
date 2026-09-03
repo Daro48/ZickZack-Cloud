@@ -13,6 +13,7 @@ export function ShareDialog({
 }) {
   const [users, setUsers] = useState([])
   const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [audience, setAudience] = useState('users')
   const [availableFolders, setAvailableFolders] = useState(folders)
   const [selectedFolders, setSelectedFolders] = useState(() => new Set(folders.length ? folders : folder ? [folder] : []))
   const [note, setNote] = useState('')
@@ -94,15 +95,18 @@ export function ShareDialog({
     }
   }, [folder, isFolderShare, onClose])
 
-  const allSelected = users.length > 0 && selectedIds.size === users.length
   const selectedCount = selectedIds.size
+  const shareWithEveryone = audience === 'everyone'
 
   const summary = useMemo(() => {
+    if (shareWithEveryone) {
+      return 'Die Dateien bleiben bei dir gespeichert. Jeder eingeloggte User sieht sie im Feed und kann liken oder kommentieren.'
+    }
     if (isFolderShare) {
       return 'Die Ordner bleiben bei dir gespeichert. Andere sehen denselben Inhalt, auch neue Uploads.'
     }
     return 'Die markierten Dateien bleiben bei dir gespeichert. Andere sehen nur diese Auswahl.'
-  }, [isFolderShare])
+  }, [isFolderShare, shareWithEveryone])
 
   function toggleUser(userId) {
     const id = Number(userId)
@@ -118,20 +122,6 @@ export function ShareDialog({
       }
       return next
     })
-  }
-
-  function toggleAll() {
-    if (allSelected) {
-      setSelectedIds(new Set())
-      return
-    }
-    setSelectedIds(
-      new Set(
-        users
-          .map((entry) => Number(entry.id))
-          .filter((id) => Number.isInteger(id) && id > 0),
-      ),
-    )
   }
 
   function toggleFolder(name) {
@@ -155,7 +145,10 @@ export function ShareDialog({
   async function handleSubmit(event) {
     event.preventDefault()
     const targetFolder = folder || [...selectedFolders][0]
-    if (isSaving || selectedCount === 0) {
+    if (isSaving) {
+      return
+    }
+    if (!shareWithEveryone && selectedCount === 0) {
       return
     }
     if (isFolderShare && !targetFolder && selectedFolders.size === 0) {
@@ -173,7 +166,7 @@ export function ShareDialog({
       const recipientIds = [...selectedIds]
         .map((id) => Number(id))
         .filter((id) => Number.isInteger(id) && id > 0)
-      if (recipientIds.length === 0) {
+      if (!shareWithEveryone && recipientIds.length === 0) {
         setError('Bitte mindestens einen User wählen.')
         setIsSaving(false)
         return
@@ -183,22 +176,26 @@ export function ShareDialog({
             kind: chosenFolders.length > 1 ? 'folders' : 'folder',
             folder: chosenFolders[0],
             folders: chosenFolders,
-            user_ids: recipientIds,
+            audience,
             note: note.trim(),
           }
         : {
             kind: 'items',
             items: items.map((item) => ({ type: item.type, id: item.id })),
-            user_ids: recipientIds,
+            audience,
             note: note.trim(),
           }
+      if (!shareWithEveryone) {
+        payload.user_ids = recipientIds
+      }
       const data = await createShare(payload)
       const shares = data?.shares || (data?.share ? [data.share] : [])
       const savedRecipients = shares.reduce(
         (total, share) => total + (share.recipients || []).length,
         0,
       )
-      if (shares.length === 0 || savedRecipients === 0) {
+      const postedToFeed = shares.some((share) => share.audience === 'everyone')
+      if (shares.length === 0 || (!postedToFeed && savedRecipients === 0)) {
         throw new Error(
           'Die Freigabe wurde nicht an die Empfänger übergeben. Bitte erneut teilen.',
         )
@@ -242,6 +239,37 @@ export function ShareDialog({
 
         <p className="share-dialog-copy">{summary}</p>
 
+        <div
+          className="community-tabs share-audience"
+          role="radiogroup"
+          aria-label="Für wen teilen"
+        >
+          <button
+            aria-checked={audience === 'users'}
+            className={`community-tab${audience === 'users' ? ' is-active' : ''}`}
+            onClick={() => {
+              setAudience('users')
+              setError('')
+            }}
+            role="radio"
+            type="button"
+          >
+            Ausgewählte Personen
+          </button>
+          <button
+            aria-checked={audience === 'everyone'}
+            className={`community-tab${audience === 'everyone' ? ' is-active' : ''}`}
+            onClick={() => {
+              setAudience('everyone')
+              setError('')
+            }}
+            role="radio"
+            type="button"
+          >
+            Alle im Feed
+          </button>
+        </div>
+
         {kind === 'folder' && (folder || [...selectedFolders][0]) && (
           <p className="folder-hint">
             Ordner: {folder || [...selectedFolders][0]}
@@ -266,30 +294,20 @@ export function ShareDialog({
           </div>
         )}
 
-        {isLoading ? (
+        {shareWithEveryone ? (
+          <p className="folder-hint">
+            Keine Empfängerliste nötig. Der Beitrag erscheint auf der Startseite
+            im Feed.
+          </p>
+        ) : isLoading ? (
           <p className="folder-hint">User werden geladen…</p>
         ) : users.length === 0 ? (
           <div className="empty-panel">
             <p>Keine anderen User.</p>
-            <span>Teilen ist erst möglich, wenn weitere Accounts existieren.</span>
+            <span>Teilen mit Personen ist erst möglich, wenn weitere Accounts existieren. Du kannst trotzdem für den Feed teilen.</span>
           </div>
         ) : (
           <div className="share-user-list" role="group" aria-label="Empfänger wählen">
-            <button
-              aria-pressed={allSelected}
-              className={`share-user-option is-all${allSelected ? ' is-active' : ''}`}
-              onClick={toggleAll}
-              type="button"
-            >
-              <span className="share-user-option-copy">
-                <strong>Alle auswählen</strong>
-                <em>
-                  {allSelected
-                    ? `Alle ${users.length} User gewählt`
-                    : `${users.length} User auf einmal`}
-                </em>
-              </span>
-            </button>
             {users.map((entry) => {
               const isActive = selectedIds.has(entry.id)
               return (
@@ -312,16 +330,20 @@ export function ShareDialog({
             className="share-note-input"
             maxLength={280}
             onChange={(event) => setNote(event.target.value)}
-            placeholder="Kurzer Hinweis für die Empfänger"
+            placeholder={
+              shareWithEveryone
+                ? 'Kurzer Hinweis im Feed'
+                : 'Kurzer Hinweis für die Empfänger'
+            }
             rows={2}
             value={note}
           />
         </label>
 
         {error && <p className="form-error">{error}</p>}
-        {!error && !isLoading && users.length > 0 && selectedCount === 0 && (
+        {!error && !isLoading && !shareWithEveryone && users.length > 0 && selectedCount === 0 && (
           <p className="folder-hint">
-            Wähle Empfänger oder Alle auswählen, dann teilen.
+            Wähle mindestens eine Person, oder teile im Feed mit allen.
           </p>
         )}
 
@@ -329,9 +351,8 @@ export function ShareDialog({
           className="primary-button share-dialog-submit"
           disabled={
             isSaving ||
-            isLoading ||
-            selectedCount === 0 ||
-            users.length === 0 ||
+            (!shareWithEveryone &&
+              (isLoading || selectedCount === 0 || users.length === 0)) ||
             (kind === 'folders' && selectedFolders.size === 0) ||
             (kind === 'folder' && !(folder || selectedFolders.size))
           }
@@ -339,9 +360,11 @@ export function ShareDialog({
         >
           {isSaving
             ? 'Wird geteilt…'
-            : selectedCount === 1
-              ? 'Mit 1 User teilen'
-              : `Mit ${selectedCount} Usern teilen`}
+            : shareWithEveryone
+              ? 'Im Feed teilen'
+              : selectedCount === 1
+                ? 'Mit 1 Person teilen'
+                : `Mit ${selectedCount} Personen teilen`}
         </button>
       </form>
     </div>,
