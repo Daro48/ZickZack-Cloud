@@ -1012,7 +1012,6 @@ def move_media_items():
         )
 
     connection = get_database_connection()
-    moved_files = []
     try:
         user = require_user(connection)
         if not user:
@@ -1049,25 +1048,23 @@ def move_media_items():
                 )
 
             planned = []
+            failed = []
             for media_type, media_id, stored_path, folder in owned:
                 if folder == dest_folder:
                     continue
                 next_path = rewrite_stored_path(stored_path, folder, dest_folder)
                 if next_path == stored_path:
-                    return (
-                        jsonify(
-                            {
-                                "status": "error",
-                                "message": "Mindestens eine Datei konnte nicht verschoben werden.",
-                            }
-                        ),
-                        400,
+                    failed.append(
+                        {
+                            "type": media_type,
+                            "id": media_id,
+                            "message": "Datei konnte nicht verschoben werden.",
+                        }
                     )
-                planned.append(
-                    (media_type, media_id, stored_path, next_path)
-                )
+                    continue
+                planned.append((media_type, media_id, stored_path, next_path))
 
-            if not planned:
+            if not planned and not failed:
                 return (
                     jsonify(
                         {
@@ -1078,46 +1075,55 @@ def move_media_items():
                     400,
                 )
 
+            moved = 0
             for media_type, media_id, stored_path, next_path in planned:
-                step = relocate_media_file(stored_path, next_path)
-                if step is None:
-                    for done in reversed(moved_files):
-                        undo_relocate_media_file(done)
-                    return (
-                        jsonify(
+                step = None
+                try:
+                    step = relocate_media_file(stored_path, next_path)
+                    if step is None:
+                        failed.append(
                             {
-                                "status": "error",
-                                "message": "Dateien konnten nicht verschoben werden.",
+                                "type": media_type,
+                                "id": media_id,
+                                "message": "Datei fehlt oder das Ziel ist belegt.",
                             }
-                        ),
-                        500,
+                        )
+                        continue
+                    table = "photos" if media_type == "photo" else "videos"
+                    cursor.execute(
+                        f"""
+                        UPDATE {table}
+                        SET folder = %s, stored_path = %s
+                        WHERE id = %s AND user_id = %s
+                        """,
+                        (dest_folder, next_path, media_id, user["id"]),
                     )
-                moved_files.append(step)
+                    connection.commit()
+                    drop_media_caches(user["id"], media_type, media_id)
+                    moved += 1
+                except Exception:
+                    if step is not None:
+                        undo_relocate_media_file(step)
+                    try:
+                        connection.rollback()
+                    except Exception:
+                        pass
+                    failed.append(
+                        {
+                            "type": media_type,
+                            "id": media_id,
+                            "message": "Datei konnte nicht verschoben werden.",
+                        }
+                    )
 
-            for media_type, media_id, stored_path, next_path in planned:
-                table = "photos" if media_type == "photo" else "videos"
-                cursor.execute(
-                    f"""
-                    UPDATE {table}
-                    SET folder = %s, stored_path = %s
-                    WHERE id = %s AND user_id = %s
-                    """,
-                    (dest_folder, next_path, media_id, user["id"]),
-                )
-                drop_media_caches(user["id"], media_type, media_id)
-
-        connection.commit()
         return jsonify(
             {
                 "status": "ok",
-                "moved": len(planned),
+                "moved": moved,
+                "failed": failed,
                 "folder": dest_folder,
             }
         )
-    except Exception:
-        for done in reversed(moved_files):
-            undo_relocate_media_file(done)
-        raise
     finally:
         connection.close()
 

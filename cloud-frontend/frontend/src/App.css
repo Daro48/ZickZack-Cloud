@@ -1440,6 +1440,11 @@ a.nav-link.is-active {
   width: 100%;
 }
 
+.move-progress {
+  display: grid;
+  gap: 10px;
+}
+
 .upload-page {
   gap: clamp(16px, 3vw, 24px);
 }

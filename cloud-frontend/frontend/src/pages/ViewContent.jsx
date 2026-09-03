@@ -24,6 +24,7 @@ import {
 
 const FOLDER_PAGE_SIZE = 200
 const PREFETCH_MARGIN = '800px 0px'
+const MOVE_CHUNK_SIZE = 8
 
 const TYPE_OPTIONS = [
   { value: 'all', label: 'Alle' },
@@ -67,10 +68,12 @@ export function ViewContent({
   const [moveFolders, setMoveFolders] = useState([])
   const [moveFolder, setMoveFolder] = useState('')
   const [moveLoading, setMoveLoading] = useState(false)
+  const [moveJob, setMoveJob] = useState(null)
   const loadIdRef = useRef(0)
   const isLoadingRef = useRef(false)
   const loadedCountRef = useRef(0)
   const sentinelRef = useRef(null)
+  const moveBusyRef = useRef(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -215,6 +218,7 @@ export function ViewContent({
   const closeDialog = useCallback(() => {
     if (!isBusy) {
       setDialog(null)
+      setMoveJob(null)
     }
   }, [isBusy])
 
@@ -232,6 +236,7 @@ export function ViewContent({
     }
     setMoveFolder('')
     setMoveFolders([])
+    setMoveJob({ phase: 'pick' })
     setDialog({ type: 'move-items', items: toMove })
     setError('')
     setMoveLoading(true)
@@ -247,38 +252,137 @@ export function ViewContent({
     }
   }
 
-  async function executeMoveItems(toMove) {
-    const destination = moveFolder.trim()
-    if (!destination || isBusy) {
+  function applyMovedItems(toRemove) {
+    if (!toRemove.length) {
       return
     }
+    const removed = new Set(toRemove.map((item) => mediaKey(item)))
+    setItems((current) => current.filter((item) => !removed.has(mediaKey(item))))
+    setSelectedKeys((current) => {
+      const next = new Set(current)
+      for (const key of removed) {
+        next.delete(key)
+      }
+      return next
+    })
+    setTotal((current) =>
+      typeof current === 'number' ? Math.max(0, current - toRemove.length) : current,
+    )
+  }
+
+  function failedItemKey(item) {
+    return `${item.type}:${item.id}`
+  }
+
+  async function executeMoveItems(toMove, destination = moveFolder.trim()) {
+    if (!toMove.length || !destination || moveBusyRef.current) {
+      return
+    }
+
+    const originalTotal =
+      moveJob?.phase === 'done' ? moveJob.originalTotal : toMove.length
+    let movedCount = moveJob?.phase === 'done' ? moveJob.moved : 0
+    const failedItems = []
+
+    moveBusyRef.current = true
     setIsBusy(true)
     setError('')
+    setViewerIndex(null)
+    setMoveJob({
+      phase: 'running',
+      destination,
+      originalTotal,
+      batchTotal: toMove.length,
+      processed: 0,
+      moved: movedCount,
+      failedItems: [],
+    })
+
     try {
-      const data = await moveMediaItems(toMove, destination)
-      const removed = new Set(toMove.map((item) => mediaKey(item)))
-      setItems((current) => current.filter((item) => !removed.has(mediaKey(item))))
-      setSelectedKeys((current) => {
-        const next = new Set(current)
-        for (const key of removed) {
-          next.delete(key)
+      for (let index = 0; index < toMove.length; index += MOVE_CHUNK_SIZE) {
+        const chunk = toMove.slice(index, index + MOVE_CHUNK_SIZE)
+        setMoveJob((current) =>
+          current
+            ? {
+                ...current,
+                processed: Math.min(index + chunk.length, toMove.length),
+              }
+            : current,
+        )
+
+        let failedLookup = new Map()
+        try {
+          const data = await moveMediaItems(chunk, destination)
+          for (const failed of data.failed || []) {
+            failedLookup.set(failedItemKey(failed), failed.message || '')
+          }
+        } catch (chunkError) {
+          for (const item of chunk) {
+            failedLookup.set(failedItemKey(item), chunkError.message)
+          }
         }
-        return next
-      })
-      const moved = typeof data.moved === 'number' ? data.moved : toMove.length
-      setTotal((current) =>
-        typeof current === 'number' ? Math.max(0, current - moved) : current,
-      )
-      setViewerIndex(null)
-      setShareNotice(
-        moved === 1
-          ? `1 Datei nach ${destination} verschoben.`
-          : `${moved} Dateien nach ${destination} verschoben.`,
-      )
-      setDialog(null)
+
+        const succeeded = []
+        for (const item of chunk) {
+          const failMessage = failedLookup.get(failedItemKey(item))
+          if (failMessage !== undefined) {
+            failedItems.push({
+              ...item,
+              failMessage: failMessage || 'Datei konnte nicht verschoben werden.',
+            })
+          } else {
+            succeeded.push(item)
+          }
+        }
+
+        applyMovedItems(succeeded)
+        movedCount += succeeded.length
+        setMoveJob((current) =>
+          current
+            ? {
+                ...current,
+                moved: movedCount,
+                failedItems: [...failedItems],
+              }
+            : current,
+        )
+      }
+
+      const nextJob = {
+        phase: 'done',
+        destination,
+        originalTotal,
+        batchTotal: toMove.length,
+        processed: toMove.length,
+        moved: movedCount,
+        failedItems,
+      }
+      setMoveJob(nextJob)
+      if (failedItems.length === 0) {
+        setShareNotice(
+          movedCount === 1
+            ? `1 Datei nach ${destination} verschoben.`
+            : `${movedCount} Dateien nach ${destination} verschoben.`,
+        )
+      } else if (movedCount > 0) {
+        setShareNotice(
+          `${movedCount} verschoben, ${failedItems.length} fehlgeschlagen.`,
+        )
+      }
     } catch (moveError) {
       setError(moveError.message)
+      setMoveJob((current) =>
+        current
+          ? {
+              ...current,
+              phase: 'done',
+              processed: current.batchTotal,
+              failedItems: failedItems.length ? failedItems : toMove,
+            }
+          : current,
+      )
     } finally {
+      moveBusyRef.current = false
       setIsBusy(false)
     }
   }
@@ -750,55 +854,134 @@ export function ViewContent({
 
       {dialog?.type === 'move-items' && (
         <ConfirmDialog
-          busy={isBusy}
-          confirmDisabled={moveLoading || !moveFolder}
+          busy={moveJob?.phase === 'running'}
+          busyLabel="Wird verschoben…"
+          cancelLabel={moveJob?.phase === 'done' ? 'Schließen' : 'Abbrechen'}
+          confirmDisabled={
+            moveJob?.phase === 'running' ||
+            (moveJob?.phase !== 'done' && (moveLoading || !moveFolder))
+          }
           confirmLabel={
-            dialog.items.length === 1
-              ? 'Datei verschieben'
-              : `${dialog.items.length} Dateien verschieben`
+            moveJob?.phase === 'done'
+              ? moveJob.failedItems.length > 0
+                ? 'Fehler erneut versuchen'
+                : 'Schließen'
+              : dialog.items.length === 1
+                ? 'Datei verschieben'
+                : `${dialog.items.length} Dateien verschieben`
           }
           description={
-            dialog.items.length === 1
-              ? `„${dialog.items[0].original_name}“ wird aus „${selectedFolder}“ in den gewählten Ordner verschoben.`
-              : `${dialog.items.length} Dateien werden aus „${selectedFolder}“ in den gewählten Ordner verschoben.`
+            moveJob?.phase === 'running'
+              ? `Dateien werden nach „${moveJob.destination}“ verschoben.`
+              : moveJob?.phase === 'done'
+                ? moveJob.failedItems.length === 0
+                  ? `Alle Dateien sind in „${moveJob.destination}“.`
+                  : moveJob.moved === 0
+                    ? `Keine Datei nach „${moveJob.destination}“ verschoben.`
+                    : `${moveJob.moved} von ${moveJob.originalTotal} Dateien nach „${moveJob.destination}“ verschoben.`
+                : dialog.items.length === 1
+                  ? `„${dialog.items[0].original_name}“ wird aus „${selectedFolder}“ in den gewählten Ordner verschoben.`
+                  : `${dialog.items.length} Dateien werden aus „${selectedFolder}“ in den gewählten Ordner verschoben.`
           }
-          error={error}
+          error={moveJob?.phase === 'pick' ? error : ''}
+          hideCancel={moveJob?.phase === 'done' && moveJob.failedItems.length === 0}
           onCancel={closeDialog}
-          onConfirm={() => executeMoveItems(dialog.items)}
-          title="In Ordner verschieben"
+          onConfirm={() => {
+            if (moveJob?.phase === 'done' && moveJob.failedItems.length === 0) {
+              closeDialog()
+              return
+            }
+            if (moveJob?.phase === 'done' && moveJob.failedItems.length > 0) {
+              executeMoveItems(moveJob.failedItems, moveJob.destination)
+              return
+            }
+            executeMoveItems(dialog.items)
+          }}
+          title={
+            moveJob?.phase === 'running'
+              ? 'Dateien werden verschoben'
+              : moveJob?.phase === 'done'
+                ? 'Verschieben abgeschlossen'
+                : 'In Ordner verschieben'
+          }
         >
-          {moveLoading ? (
-            <p className="folder-hint">Ordner werden geladen…</p>
-          ) : moveFolders.length === 0 ? (
-            <div className="empty-panel">
-              <p>Kein anderer Ordner.</p>
-              <span>
-                Lege unter Upload zuerst einen Zielordner an, zum Beispiel
-                Urlaub 2024.
-              </span>
-            </div>
-          ) : (
-            <div
-              aria-label="Zielordner"
-              className="share-user-list is-compact"
-              role="group"
-            >
-              {moveFolders.map((name) => {
-                const isActive = moveFolder === name
-                return (
-                  <button
-                    aria-pressed={isActive}
-                    className={`share-user-option${isActive ? ' is-active' : ''}`}
-                    key={name}
-                    onClick={() => setMoveFolder(name)}
-                    type="button"
-                  >
-                    {name}
-                  </button>
-                )
-              })}
+          {moveJob?.phase === 'running' && (
+            <div aria-live="polite" className="move-progress">
+              <div
+                aria-valuemax={moveJob.batchTotal}
+                aria-valuemin={0}
+                aria-valuenow={moveJob.processed}
+                className="upload-progress"
+                role="progressbar"
+              >
+                <div
+                  className="upload-progress-bar"
+                  style={{
+                    width: `${
+                      moveJob.batchTotal
+                        ? Math.round(
+                            (moveJob.processed / moveJob.batchTotal) * 100,
+                          )
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <p className="folder-hint">
+                {moveJob.processed} von {moveJob.batchTotal} Dateien
+                {moveJob.failedItems.length > 0
+                  ? ` · ${moveJob.failedItems.length} fehlgeschlagen`
+                  : ''}
+              </p>
             </div>
           )}
+          {moveJob?.phase === 'done' && moveJob.failedItems.length === 0 && (
+            <p className="upload-ok">
+              {moveJob.moved === 1
+                ? '1 Datei wurde verschoben.'
+                : `Alle ${moveJob.moved} Dateien wurden verschoben.`}
+            </p>
+          )}
+          {moveJob?.phase === 'done' && moveJob.failedItems.length > 0 && (
+            <p className="form-error">
+              {moveJob.failedItems.length === 1
+                ? '1 Datei fehlgeschlagen. Du kannst den Fehler erneut versuchen.'
+                : `${moveJob.failedItems.length} Dateien fehlgeschlagen. Du kannst die Fehler erneut versuchen.`}
+            </p>
+          )}
+          {moveJob?.phase === 'pick' &&
+            (moveLoading ? (
+              <p className="folder-hint">Ordner werden geladen…</p>
+            ) : moveFolders.length === 0 ? (
+              <div className="empty-panel">
+                <p>Kein anderer Ordner.</p>
+                <span>
+                  Lege unter Upload zuerst einen Zielordner an, zum Beispiel
+                  Urlaub 2024.
+                </span>
+              </div>
+            ) : (
+              <div
+                aria-label="Zielordner"
+                className="share-user-list is-compact"
+                role="group"
+              >
+                {moveFolders.map((name) => {
+                  const isActive = moveFolder === name
+                  return (
+                    <button
+                      aria-pressed={isActive}
+                      className={`share-user-option${isActive ? ' is-active' : ''}`}
+                      key={name}
+                      onClick={() => setMoveFolder(name)}
+                      type="button"
+                    >
+                      {name}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
         </ConfirmDialog>
       )}
       {dialog?.type === 'delete-items' && (

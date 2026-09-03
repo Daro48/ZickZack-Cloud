@@ -8,7 +8,10 @@ export function ConfirmDialog({
   cancelLabel = 'Abbrechen',
   danger = false,
   busy = false,
+  busyLabel = 'Wird ausgeführt…',
   confirmDisabled = false,
+  hideConfirm = false,
+  hideCancel = false,
   error = '',
   children,
   onCancel,
@@ -49,7 +52,7 @@ export function ConfirmDialog({
         className="share-dialog-panel"
         onSubmit={(event) => {
           event.preventDefault()
-          if (!busy && !confirmDisabled) {
+          if (!busy && !confirmDisabled && !hideConfirm) {
             onConfirm()
           }
         }}
@@ -58,27 +61,31 @@ export function ConfirmDialog({
           <div className="share-dialog-heading">
             <h2 id="confirm-dialog-title">{title}</h2>
           </div>
-          <button
-            className="ghost-button"
-            disabled={busy}
-            onClick={onCancel}
-            type="button"
-          >
-            {cancelLabel}
-          </button>
+          {!hideCancel && (
+            <button
+              className="ghost-button"
+              disabled={busy}
+              onClick={onCancel}
+              type="button"
+            >
+              {cancelLabel}
+            </button>
+          )}
         </div>
 
         {description && <p className="share-dialog-copy">{description}</p>}
         {children}
         {error && <p className="form-error">{error}</p>}
 
-        <button
-          className={danger ? 'danger-button share-dialog-submit' : 'primary-button share-dialog-submit'}
-          disabled={busy || confirmDisabled}
-          type="submit"
-        >
-          {busy ? 'Wird ausgeführt…' : confirmLabel}
-        </button>
+        {!hideConfirm && (
+          <button
+            className={danger ? 'danger-button share-dialog-submit' : 'primary-button share-dialog-submit'}
+            disabled={busy || confirmDisabled}
+            type="submit"
+          >
+            {busy ? busyLabel : confirmLabel}
+          </button>
+        )}
       </form>
     </div>,
     document.body,
