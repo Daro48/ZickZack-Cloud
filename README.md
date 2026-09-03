@@ -1,6 +1,6 @@
 # Cloud Foto / Video
 
-Lokale Cloud-App mit Login, Upload und Wochen-Galerie.
+Lokale Cloud-App mit Login, Upload, Galerie und Community.
 
 ## Start
 

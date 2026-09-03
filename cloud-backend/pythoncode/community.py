@@ -373,6 +373,20 @@ def attach_feed_social(cursor, viewer_id, items):
 
     cursor.execute(
         f"""
+        SELECT media_type, media_id, COUNT(*) AS comment_count
+        FROM feed_comments
+        WHERE (media_type, media_id) IN ({placeholders})
+        GROUP BY media_type, media_id
+        """,
+        params,
+    )
+    comment_counts = {
+        (row["media_type"], row["media_id"]): int(row["comment_count"])
+        for row in cursor.fetchall()
+    }
+
+    cursor.execute(
+        f"""
         SELECT media_type, media_id
         FROM feed_likes
         WHERE user_id = %s AND (media_type, media_id) IN ({placeholders})
@@ -390,13 +404,28 @@ def attach_feed_social(cursor, viewer_id, items):
             comments.media_id,
             comments.body,
             comments.created_at,
-            users.username
-        FROM feed_comments AS comments
-        INNER JOIN users ON users.id = comments.user_id
-        WHERE (comments.media_type, comments.media_id) IN ({placeholders})
+            comments.username
+        FROM (
+            SELECT
+                inner_comments.id,
+                inner_comments.user_id,
+                inner_comments.media_type,
+                inner_comments.media_id,
+                inner_comments.body,
+                inner_comments.created_at,
+                users.username,
+                ROW_NUMBER() OVER (
+                    PARTITION BY inner_comments.media_type, inner_comments.media_id
+                    ORDER BY inner_comments.created_at DESC, inner_comments.id DESC
+                ) AS row_num
+            FROM feed_comments AS inner_comments
+            INNER JOIN users ON users.id = inner_comments.user_id
+            WHERE (inner_comments.media_type, inner_comments.media_id) IN ({placeholders})
+        ) AS comments
+        WHERE comments.row_num <= %s
         ORDER BY comments.created_at ASC, comments.id ASC
         """,
-        params,
+        (*params, MAX_FEED_COMMENTS),
     )
     grouped = {}
     for row in cursor.fetchall():
@@ -407,10 +436,9 @@ def attach_feed_social(cursor, viewer_id, items):
         comments = grouped.get(key, [])
         item["like_count"] = like_counts.get(key, 0)
         item["liked"] = key in liked
-        item["comment_count"] = len(comments)
+        item["comment_count"] = comment_counts.get(key, 0)
         item["comments"] = [
-            serialize_feed_comment(row, viewer_id)
-            for row in comments[-MAX_FEED_COMMENTS:]
+            serialize_feed_comment(row, viewer_id) for row in comments
         ]
     return items
 

@@ -44,6 +44,7 @@ export function ViewContent({
   onGoStart,
   onGoUpload,
   onGoCommunity,
+  isActive = true,
 }) {
   const [selectedFolder, setSelectedFolder] = useState('')
   const [folderRefreshKey, setFolderRefreshKey] = useState(0)
@@ -74,6 +75,7 @@ export function ViewContent({
   const loadedCountRef = useRef(0)
   const sentinelRef = useRef(null)
   const moveBusyRef = useRef(false)
+  const wasActiveRef = useRef(isActive)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -153,14 +155,22 @@ export function ViewContent({
     } finally {
       if (requestId === loadIdRef.current) {
         setIsLoading(false)
+        isLoadingRef.current = false
       }
-      isLoadingRef.current = false
     }
   }, [debouncedQuery, selectedFolder, sort, trashMode, typeFilter])
 
   useEffect(() => {
     resetMedia()
   }, [debouncedQuery, sort, typeFilter, trashMode])
+
+  useEffect(() => {
+    if (isActive && !wasActiveRef.current) {
+      setFolderRefreshKey((current) => current + 1)
+      resetMedia()
+    }
+    wasActiveRef.current = isActive
+  }, [isActive])
 
   const canLoadMore = hasLoaded && hasMore
 
@@ -598,7 +608,7 @@ export function ViewContent({
     observer.observe(node)
 
     return () => observer.disconnect()
-  }, [canLoadMore, loadPage])
+  }, [canLoadMore, items.length, loadPage])
 
   return (
     <div className="app-shell">

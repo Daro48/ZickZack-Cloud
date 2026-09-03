@@ -3000,6 +3000,10 @@ a.nav-link.is-active {
   color: var(--acid-mint);
 }
 
+.feed-like.is-active .feed-like-icon path {
+  fill: currentColor;
+}
+
 .feed-comments {
   display: grid;
   gap: 6px;

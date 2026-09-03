@@ -180,6 +180,7 @@ export function Community({
   onGoStart,
   onGoUpload,
   onGoContent,
+  isActive = true,
 }) {
   const [tab, setTab] = useState('inbox')
   const [incoming, setIncoming] = useState([])
@@ -220,6 +221,7 @@ export function Community({
   const shareLoadingRef = useRef(false)
   const shareCountRef = useRef(0)
   const shareSentinelRef = useRef(null)
+  const wasActiveRef = useRef(isActive)
 
   const viewerItems = activeShare ? shareItems : ownItems
   const selectedItems = useMemo(
@@ -244,6 +246,13 @@ export function Community({
   useEffect(() => {
     reloadFeed()
   }, [reloadFeed])
+
+  useEffect(() => {
+    if (isActive && !wasActiveRef.current) {
+      reloadFeed()
+    }
+    wasActiveRef.current = isActive
+  }, [isActive, reloadFeed])
 
   function handleFolderChange(folder) {
     ownLoadIdRef.current += 1
@@ -297,8 +306,8 @@ export function Community({
     } finally {
       if (requestId === ownLoadIdRef.current) {
         setOwnLoading(false)
+        ownLoadingRef.current = false
       }
-      ownLoadingRef.current = false
     }
   }, [selectedFolder])
 
@@ -338,8 +347,8 @@ export function Community({
     } finally {
       if (requestId === shareLoadIdRef.current) {
         setShareLoading(false)
+        shareLoadingRef.current = false
       }
-      shareLoadingRef.current = false
     }
   }, [activeShare])
 
@@ -373,7 +382,7 @@ export function Community({
     )
     observer.observe(node)
     return () => observer.disconnect()
-  }, [loadOwnPage, ownHasLoaded, ownHasMore, tab])
+  }, [loadOwnPage, ownHasLoaded, ownHasMore, ownItems.length, tab])
 
   useEffect(() => {
     const node = shareSentinelRef.current
@@ -391,7 +400,7 @@ export function Community({
     )
     observer.observe(node)
     return () => observer.disconnect()
-  }, [activeShare, loadSharePage, shareHasLoaded, shareHasMore])
+  }, [activeShare, loadSharePage, shareHasLoaded, shareHasMore, shareItems.length])
 
   function openShare(share) {
     shareLoadIdRef.current += 1
@@ -657,7 +666,8 @@ export function Community({
                     <div className="empty-panel">
                       <p>Noch keine Freigaben.</p>
                       <span>
-                        Markiere Dateien oder teile einen Ordner, danach die User.
+                        Markiere Dateien oder einen Ordner und teile sie mit
+                        Personen oder im Feed.
                       </span>
                     </div>
                   ) : (
@@ -760,8 +770,9 @@ export function Community({
                   <div className="empty-panel">
                     <p>Noch nichts geteilt bekommen.</p>
                     <span>
-                      Sobald dir jemand Ordner oder Dateien freigibt, erscheinen
-                      sie hier.
+                      Sobald dir jemand Ordner oder Dateien nur mit dir teilt,
+                      erscheinen sie hier. Beiträge für alle liegen im Feed auf
+                      der Startseite.
                     </span>
                   </div>
                 ) : (

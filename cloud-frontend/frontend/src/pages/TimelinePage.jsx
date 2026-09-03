@@ -80,8 +80,8 @@ function usePagedMedia({ load, resetDeps, enabled = true }) {
     } finally {
       if (requestId === loadIdRef.current) {
         setIsLoading(false)
+        isLoadingRef.current = false
       }
-      isLoadingRef.current = false
     }
   }, [enabled, load])
 
@@ -109,7 +109,7 @@ function usePagedMedia({ load, resetDeps, enabled = true }) {
   }
 }
 
-function useScrollSentinel(enabled, loadPage) {
+function useScrollSentinel(enabled, loadPage, reloadKey) {
   const sentinelRef = useRef(null)
 
   useEffect(() => {
@@ -128,7 +128,7 @@ function useScrollSentinel(enabled, loadPage) {
     )
     observer.observe(node)
     return () => observer.disconnect()
-  }, [enabled, loadPage])
+  }, [enabled, loadPage, reloadKey])
 
   return sentinelRef
 }
@@ -140,6 +140,7 @@ export function TimelinePage({
   onGoUpload,
   onGoContent,
   onGoCommunity,
+  isActive = true,
 }) {
   const [tab, setTab] = useState('shared')
   const [viewer, setViewer] = useState(null)
@@ -159,22 +160,25 @@ export function TimelinePage({
   )
 
   const shared = usePagedMedia({
+    enabled: tab === 'shared' && isActive,
     load: loadShared,
-    resetDeps: [],
+    resetDeps: [isActive],
   })
   const feed = usePagedMedia({
-    enabled: tab === 'feed',
+    enabled: tab === 'feed' && isActive,
     load: loadFeed,
-    resetDeps: [],
+    resetDeps: [isActive],
   })
 
   const sharedSentinelRef = useScrollSentinel(
     tab === 'shared' && shared.hasLoaded && shared.hasMore,
     shared.loadPage,
+    shared.items.length,
   )
   const feedSentinelRef = useScrollSentinel(
     tab === 'feed' && feed.hasLoaded && feed.hasMore,
     feed.loadPage,
+    feed.items.length,
   )
 
   const groups = useMemo(() => groupByDay(shared.items), [shared.items])
@@ -186,10 +190,10 @@ export function TimelinePage({
         : []
   const viewerIndex = viewer?.index ?? null
 
-  function updateFeedItem(nextItem) {
+  function updateFeedItem(key, patch) {
     feed.setItems((current) =>
       current.map((item) =>
-        mediaKey(item) === mediaKey(nextItem) ? nextItem : item,
+        mediaKey(item) === key ? { ...item, ...patch } : item,
       ),
     )
   }

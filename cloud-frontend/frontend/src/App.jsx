@@ -248,6 +248,7 @@ function App() {
           <div hidden={page !== 'start'}>
             <TimelinePage
               username={user.username}
+              isActive={page === 'start'}
               onLogout={handleLogout}
               onGoStart={() => openPage('start')}
               onGoUpload={() => openPage('home')}
@@ -272,6 +273,7 @@ function App() {
           <div hidden={page !== 'content'}>
             <ViewContent
               username={user.username}
+              isActive={page === 'content'}
               onLogout={handleLogout}
               onGoStart={() => openPage('start')}
               onGoUpload={() => openPage('home')}
@@ -283,6 +285,7 @@ function App() {
           <div hidden={page !== 'community'}>
             <Community
               username={user.username}
+              isActive={page === 'community'}
               onLogout={handleLogout}
               onGoStart={() => openPage('start')}
               onGoUpload={() => openPage('home')}

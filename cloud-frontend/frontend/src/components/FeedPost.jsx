@@ -3,6 +3,7 @@ import { ConfirmDialog } from './ConfirmDialog.jsx'
 import {
   createFeedComment,
   deleteFeedComment,
+  mediaKey,
   toggleFeedLike,
 } from '../services/communityApi.js'
 import { formatDateTime } from '../utils/format.js'
@@ -49,8 +50,7 @@ export function FeedPost({ item, onOpen, onItemChange }) {
     setLikeBusy(true)
     try {
       const data = await toggleFeedLike(item)
-      onItemChange({
-        ...item,
+      onItemChange(mediaKey(item), {
         liked: Boolean(data.liked),
         like_count: data.like_count ?? likeCount,
       })
@@ -76,8 +76,7 @@ export function FeedPost({ item, onOpen, onItemChange }) {
         throw new Error('Kommentar konnte nicht gespeichert werden.')
       }
       setDraft('')
-      onItemChange({
-        ...item,
+      onItemChange(mediaKey(item), {
         comment_count: (item.comment_count || comments.length) + 1,
         comments: [...comments, comment],
       })
@@ -99,8 +98,7 @@ export function FeedPost({ item, onOpen, onItemChange }) {
       const nextComments = comments.filter(
         (entry) => entry.id !== pendingDelete.id,
       )
-      onItemChange({
-        ...item,
+      onItemChange(mediaKey(item), {
         comment_count: Math.max(0, (item.comment_count || comments.length) - 1),
         comments: nextComments,
       })

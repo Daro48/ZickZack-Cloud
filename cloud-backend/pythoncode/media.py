@@ -1,7 +1,6 @@
 import os
 import shutil
 import threading
-from calendar import monthrange
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -312,17 +311,6 @@ def serialize_and_prime(rows, user_id):
     return items
 
 
-def week_range(year, month, week):
-    last_day = monthrange(year, month)[1]
-    start_day = (week - 1) * 7 + 1
-    end_day = min(week * 7, last_day)
-    if start_day > last_day:
-        return None
-    start = datetime(year, month, start_day, 0, 0, 0)
-    end = datetime(year, month, end_day, 23, 59, 59)
-    return start, end
-
-
 def parse_positive_int(value):
     try:
         number = int(value)
@@ -365,86 +353,6 @@ def parse_non_negative_int(value, default=0):
     if number < 0:
         return default
     return number
-
-
-@media_bp.get("/bp/media")
-def list_media_for_week():
-    year = parse_positive_int(request.args.get("year"))
-    month = parse_positive_int(request.args.get("month"))
-    week = parse_positive_int(request.args.get("week"))
-    if not year or not month or month > 12 or not week or week > 5:
-        return (
-            jsonify(
-                {
-                    "status": "error",
-                    "message": "year, month und week sind erforderlich.",
-                }
-            ),
-            400,
-        )
-
-    bounds = week_range(year, month, week)
-    if not bounds:
-        return jsonify({"status": "error", "message": "Ungültige Woche."}), 400
-
-    start, end = bounds
-    connection = get_database_connection()
-    try:
-        user = require_user(connection)
-        if not user:
-            return jsonify({"status": "error", "message": "Not authenticated"}), 401
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    id,
-                    'photo' AS type,
-                    original_name,
-                    stored_path,
-                    mime_type,
-                    size_bytes,
-                    created_at,
-                    captured_at,
-                    folder
-                FROM photos
-                WHERE user_id = %s
-                  AND deleted_at IS NULL
-                  AND COALESCE(captured_at, created_at) BETWEEN %s AND %s
-                UNION ALL
-                SELECT
-                    id,
-                    'video' AS type,
-                    original_name,
-                    stored_path,
-                    mime_type,
-                    size_bytes,
-                    created_at,
-                    captured_at,
-                    folder
-                FROM videos
-                WHERE user_id = %s
-                  AND deleted_at IS NULL
-                  AND COALESCE(captured_at, created_at) BETWEEN %s AND %s
-                ORDER BY COALESCE(captured_at, created_at) DESC, type ASC, id DESC
-                """,
-                (user["id"], start, end, user["id"], start, end),
-            )
-            rows = cursor.fetchall()
-
-        return jsonify(
-            {
-                "status": "ok",
-                "year": year,
-                "month": month,
-                "week": week,
-                "start_day": start.day,
-                "end_day": end.day,
-                "items": serialize_and_prime(rows, user["id"]),
-            }
-        )
-    finally:
-        connection.close()
 
 
 def count_folder_items(cursor, user_id, folder_name, media_type=None, query=None):
