@@ -42,21 +42,16 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [frontend, backend]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     concurrency:
       group: production-deploy
       cancel-in-progress: false
     steps:
       - name: Deploy
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            set -euo pipefail
-            cd "${{ secrets.DEPLOY_PATH }}"
-            git fetch origin
-            git checkout main
-            git pull --ff-only origin main
-            docker compose up -d --build --remove-orphans backend frontend
+        run: |
+          set -euo pipefail
+          cd /home/daniel/ZickZack-Cloud
+          git fetch origin
+          git checkout main
+          git pull --ff-only origin main
+          docker compose up -d --build --remove-orphans backend frontend
