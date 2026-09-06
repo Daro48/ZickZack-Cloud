@@ -11,6 +11,7 @@ import os
 login_bp = Blueprint("login", __name__)
 SESSION_COOKIE_NAME = "session_token"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "daniel").strip().lower()
 MAX_LOGIN_ATTEMPTS = 20
 LOCKOUT_MINUTES = 15
 
@@ -25,6 +26,18 @@ _last_session_cleanup = 0.0
 
 def now_utc():
     return datetime.now(timezone.utc)
+
+
+def is_admin_username(username):
+    return bool(username) and str(username).strip().lower() == ADMIN_USERNAME
+
+
+def attach_admin_flag(user):
+    if not user:
+        return None
+    attached = dict(user)
+    attached["is_admin"] = is_admin_username(attached.get("username"))
+    return attached
 
 
 def get_client_ip():
@@ -157,7 +170,7 @@ def get_user_by_session(connection, session_token):
               AND sessions.expires_at > UTC_TIMESTAMP()
         """
         cursor.execute(sql, (session_token,))
-        return cursor.fetchone()
+        return attach_admin_flag(cursor.fetchone())
 
 
 @login_bp.post("/bp/auth/login")
@@ -242,10 +255,12 @@ def login():
                 {
                     "status": "ok",
                     "message": "Anmeldung erfolgreich.",
-                    "user": {
-                        "id": user["id"],
-                        "username": user["username"],
-                    },
+                    "user": attach_admin_flag(
+                        {
+                            "id": user["id"],
+                            "username": user["username"],
+                        }
+                    ),
                 }
             )
         )

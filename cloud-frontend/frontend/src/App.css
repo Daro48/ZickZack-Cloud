@@ -198,7 +198,8 @@ a.nav-link.is-active {
   color: var(--placeholder);
 }
 
-.folder-field input:focus {
+.folder-field input:focus,
+.folder-field textarea:focus {
   border-color: var(--acid-mint);
   box-shadow: 0 0 0 3px var(--mint-soft);
   outline: none;
@@ -680,6 +681,13 @@ a.nav-link.is-active {
   gap: 24px;
   justify-content: space-between;
   padding: clamp(20px, 4vw, 36px) var(--page-pad) 0;
+}
+
+.page-header-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+  min-width: 10.5rem;
 }
 
 .upload-status {
@@ -3103,4 +3111,64 @@ a.nav-link.is-active {
 
 .share-dialog .share-audience {
   margin: 0;
+}
+
+.account-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.account-actions .secondary-button,
+.account-actions .ghost-button {
+  width: 100%;
+}
+
+.account-messages {
+  display: grid;
+  gap: 14px;
+  max-height: min(46vh, 360px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.account-messages-status {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.account-message {
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+  padding-bottom: 14px;
+}
+
+.account-message:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.account-message-meta {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: space-between;
+}
+
+.account-message-meta strong {
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
+.account-message-meta time {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.account-message-body {
+  color: var(--text-strong);
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }

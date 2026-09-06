@@ -158,3 +158,18 @@ CREATE TABLE feed_comments (
         ON DELETE CASCADE,
     INDEX idx_feed_comments_media_created (media_type, media_id, created_at)
 );
+
+CREATE TABLE admin_messages (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    recipient_id INT UNSIGNED NULL,
+    audience ENUM('admin', 'user', 'all') NOT NULL DEFAULT 'admin',
+    body VARCHAR(1000) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+    INDEX idx_admin_messages_user_created (user_id, created_at),
+    INDEX idx_admin_messages_created (created_at),
+    INDEX idx_admin_messages_inbox (audience, recipient_id, created_at)
+);

@@ -1,21 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppNav } from '../components/AppNav.jsx'
 import { ChangePasswordDialog } from '../components/ChangePasswordDialog.jsx'
+import { MessagesDialog } from '../components/MessagesDialog.jsx'
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx'
-import { FolderPicker } from '../components/FolderPicker.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
 import { MediaViewer } from '../components/MediaViewer.jsx'
-import { SelectionPopup } from '../components/SelectionPopup.jsx'
-import { ShareDialog } from '../components/ShareDialog.jsx'
 import { Topbar } from '../components/Topbar.jsx'
 import {
   deleteShare,
   fetchCommunity,
   fetchShareMedia,
-  leaveShare,
   mediaKey,
 } from '../services/communityApi.js'
-import { fetchFolderMedia } from '../services/mediaApi.js'
 
 const PAGE_SIZE = 200
 const PREFETCH_MARGIN = '800px 0px'
@@ -34,15 +30,12 @@ function recipientLabel(share) {
   return `${names.slice(0, 2).join(', ')} +${names.length - 2}`
 }
 
-function ShareCard({ share, onOpen, onDelete, onLeave, isDeleting, isLeaving }) {
+function ShareCard({ share, onOpen, onDelete, isDeleting }) {
   const preview = share.preview || []
   const title =
     share.kind === 'folder' ? share.folder : `${share.item_count} Datei(en)`
-  const kicker = share.mine
-    ? share.audience === 'everyone'
-      ? 'Im Feed'
-      : 'Von dir geteilt'
-    : `Von ${share.owner?.username}`
+  const kicker =
+    share.audience === 'everyone' ? 'Im Feed' : 'Von dir geteilt'
 
   return (
     <article className="share-card">
@@ -71,33 +64,20 @@ function ShareCard({ share, onOpen, onDelete, onLeave, isDeleting, isLeaving }) 
           <strong>{title}</strong>
           {share.note && <em className="share-card-note">{share.note}</em>}
           <em>
-            {share.item_count} Datei(en)
-            {share.mine ? ` · ${recipientLabel(share)}` : ''}
+            {share.item_count} Datei(en) · {recipientLabel(share)}
           </em>
         </div>
       </button>
-      {share.mine && (
-        <div className="share-card-actions">
-          <button
-            className="ghost-button share-delete"
-            disabled={isDeleting}
-            onClick={onDelete}
-            type="button"
-          >
-            {isDeleting ? 'Wird beendet…' : 'Freigabe beenden'}
-          </button>
-        </div>
-      )}
-      {!share.mine && (
+      <div className="share-card-actions">
         <button
           className="ghost-button share-delete"
-          disabled={isLeaving}
-          onClick={onLeave}
+          disabled={isDeleting}
+          onClick={onDelete}
           type="button"
         >
-          {isLeaving ? 'Wird verlassen…' : 'Verlassen'}
+          {isDeleting ? 'Wird beendet…' : 'Freigabe beenden'}
         </button>
-      )}
+      </div>
     </article>
   )
 }
@@ -112,11 +92,8 @@ function MediaPager({
   items,
   loadPage,
   onOpen,
-  selectable = false,
-  selectedKeys,
   sentinelRef,
   total,
-  onToggleSelect,
 }) {
   return (
     <section className="media-section" aria-label="Medien">
@@ -139,11 +116,6 @@ function MediaPager({
               item={item}
               key={mediaKey(item)}
               onOpen={() => onOpen(index)}
-              onToggleSelect={
-                onToggleSelect ? () => onToggleSelect(item) : undefined
-              }
-              selectable={selectable}
-              selected={Boolean(selectedKeys?.has(mediaKey(item)))}
             />
           ))}
         </div>
@@ -176,32 +148,20 @@ function MediaPager({
 
 export function Community({
   username,
+  isAdmin = false,
   onLogout,
   onGoStart,
   onGoUpload,
   onGoContent,
   isActive = true,
 }) {
-  const [tab, setTab] = useState('inbox')
-  const [incoming, setIncoming] = useState([])
   const [outgoing, setOutgoing] = useState([])
   const [isFeedLoading, setIsFeedLoading] = useState(true)
   const [feedError, setFeedError] = useState('')
-  const [notice, setNotice] = useState('')
   const [deletingId, setDeletingId] = useState(null)
-  const [leavingId, setLeavingId] = useState(null)
   const [dialog, setDialog] = useState(null)
   const [accountOpen, setAccountOpen] = useState(false)
-
-  const [selectedFolder, setSelectedFolder] = useState('')
-  const [ownItems, setOwnItems] = useState([])
-  const [ownTotal, setOwnTotal] = useState(null)
-  const [ownHasMore, setOwnHasMore] = useState(false)
-  const [ownHasLoaded, setOwnHasLoaded] = useState(false)
-  const [ownLoading, setOwnLoading] = useState(false)
-  const [ownError, setOwnError] = useState('')
-  const [selectedKeys, setSelectedKeys] = useState(() => new Set())
-  const [shareTarget, setShareTarget] = useState(null)
+  const [messagesOpen, setMessagesOpen] = useState(false)
 
   const [activeShare, setActiveShare] = useState(null)
   const [shareItems, setShareItems] = useState([])
@@ -212,29 +172,17 @@ export function Community({
   const [shareListError, setShareListError] = useState('')
   const [viewerIndex, setViewerIndex] = useState(null)
 
-  const ownLoadIdRef = useRef(0)
-  const ownLoadingRef = useRef(false)
-  const ownCountRef = useRef(0)
-  const ownSentinelRef = useRef(null)
-
   const shareLoadIdRef = useRef(0)
   const shareLoadingRef = useRef(false)
   const shareCountRef = useRef(0)
   const shareSentinelRef = useRef(null)
   const wasActiveRef = useRef(isActive)
 
-  const viewerItems = activeShare ? shareItems : ownItems
-  const selectedItems = useMemo(
-    () => ownItems.filter((item) => selectedKeys.has(mediaKey(item))),
-    [ownItems, selectedKeys],
-  )
-
   const reloadFeed = useCallback(async () => {
     setIsFeedLoading(true)
     setFeedError('')
     try {
       const data = await fetchCommunity()
-      setIncoming(data.incoming || [])
       setOutgoing(data.outgoing || [])
     } catch (error) {
       setFeedError(error.message)
@@ -253,63 +201,6 @@ export function Community({
     }
     wasActiveRef.current = isActive
   }, [isActive, reloadFeed])
-
-  function handleFolderChange(folder) {
-    ownLoadIdRef.current += 1
-    ownLoadingRef.current = false
-    ownCountRef.current = 0
-    setSelectedFolder(folder)
-    setOwnItems([])
-    setOwnTotal(null)
-    setOwnHasMore(false)
-    setOwnHasLoaded(false)
-    setOwnError('')
-    setOwnLoading(false)
-    setSelectedKeys(new Set())
-    setViewerIndex(null)
-    setNotice('')
-  }
-
-  const loadOwnPage = useCallback(async () => {
-    if (!selectedFolder || ownLoadingRef.current) {
-      return
-    }
-
-    const requestId = ownLoadIdRef.current
-    ownLoadingRef.current = true
-    setOwnLoading(true)
-    setOwnError('')
-
-    try {
-      const data = await fetchFolderMedia(selectedFolder, {
-        offset: ownCountRef.current,
-        limit: PAGE_SIZE,
-      })
-      if (requestId !== ownLoadIdRef.current) {
-        return
-      }
-
-      const nextItems = data.items || []
-      ownCountRef.current += nextItems.length
-      setOwnItems((current) =>
-        nextItems.length ? [...current, ...nextItems] : current,
-      )
-      setOwnHasMore(Boolean(data.has_more))
-      setOwnHasLoaded(true)
-      if (typeof data.total === 'number') {
-        setOwnTotal(data.total)
-      }
-    } catch (error) {
-      if (requestId === ownLoadIdRef.current) {
-        setOwnError(error.message)
-      }
-    } finally {
-      if (requestId === ownLoadIdRef.current) {
-        setOwnLoading(false)
-        ownLoadingRef.current = false
-      }
-    }
-  }, [selectedFolder])
 
   const loadSharePage = useCallback(async () => {
     if (!activeShare || shareLoadingRef.current) {
@@ -353,36 +244,11 @@ export function Community({
   }, [activeShare])
 
   useEffect(() => {
-    if (tab !== 'share' || !selectedFolder || ownHasLoaded || ownLoading) {
-      return
-    }
-    loadOwnPage()
-  }, [selectedFolder, tab])
-
-  useEffect(() => {
     if (!activeShare || shareHasLoaded || shareLoading) {
       return
     }
     loadSharePage()
   }, [activeShare?.id])
-
-  useEffect(() => {
-    const node = ownSentinelRef.current
-    if (!node || tab !== 'share' || !ownHasLoaded || !ownHasMore) {
-      return undefined
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          loadOwnPage()
-        }
-      },
-      { rootMargin: PREFETCH_MARGIN },
-    )
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [loadOwnPage, ownHasLoaded, ownHasMore, ownItems.length, tab])
 
   useEffect(() => {
     const node = shareSentinelRef.current
@@ -423,27 +289,6 @@ export function Community({
     setViewerIndex(null)
   }
 
-  function toggleItem(item) {
-    const key = mediaKey(item)
-    setSelectedKeys((current) => {
-      const next = new Set(current)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
-      return next
-    })
-  }
-
-  function selectAllVisible() {
-    setSelectedKeys(new Set(ownItems.map((item) => mediaKey(item))))
-  }
-
-  function clearSelection() {
-    setSelectedKeys(new Set())
-  }
-
   async function handleDeleteShare(share) {
     setDialog({ type: 'end-share', share })
   }
@@ -465,62 +310,15 @@ export function Community({
     }
   }
 
-  async function handleLeaveShare(share) {
-    setDialog({ type: 'leave-share', share })
-  }
-
-  async function executeLeaveShare(share) {
-    setLeavingId(share.id)
-    setFeedError('')
-    try {
-      await leaveShare(share.id)
-      if (activeShare?.id === share.id) {
-        closeShare()
-      }
-      setDialog(null)
-      await reloadFeed()
-    } catch (error) {
-      setFeedError(error.message)
-    } finally {
-      setLeavingId(null)
-    }
-  }
-
-  function handleShared(data) {
-    const shares = data?.shares || (data?.share ? [data.share] : [])
-    const count = shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
-      ? shares.length
-      : selectedItems.length
-    const postedToFeed = shares.some((share) => share.audience === 'everyone')
-    setShareTarget(null)
-    setSelectedKeys(new Set())
-    setNotice(
-      postedToFeed
-        ? count > 1
-          ? `${count} Beiträge liegen im Feed, ohne extra gespeichert zu werden.`
-          : 'Im Feed geteilt, ohne extra gespeichert zu werden.'
-        : shareTarget?.kind === 'folder' || shareTarget?.kind === 'folders'
-          ? count > 1
-            ? `${count} Ordner geteilt, ohne sie extra zu speichern.`
-            : `Ordner geteilt, ohne ihn extra zu speichern.`
-          : `${count === 1 ? '1 Datei' : `${count} Dateien`} geteilt, ohne sie extra zu speichern.`,
-    )
-    reloadFeed()
-  }
-
   const closeViewer = useCallback(() => {
     setViewerIndex(null)
   }, [])
 
-  const closeShareDialog = useCallback(() => {
-    setShareTarget(null)
-  }, [])
-
   const closeDialog = useCallback(() => {
-    if (!deletingId && !leavingId) {
+    if (!deletingId) {
       setDialog(null)
     }
-  }, [deletingId, leavingId])
+  }, [deletingId])
 
   return (
     <div className="app-shell">
@@ -544,23 +342,28 @@ export function Community({
         }
       />
 
-      <main
-        className={`app-page${
-          selectedItems.length > 0 ? ' has-selection-popup' : ''
-        }`}
-      >
+      <main className="app-page">
         <header className="page-header">
           <div>
             <p className="eyebrow">Cloud</p>
             <h1>Community</h1>
           </div>
-          <button
-            className="ghost-button"
-            onClick={() => setAccountOpen(true)}
-            type="button"
-          >
-            Konto
-          </button>
+          <div className="page-header-actions">
+            <button
+              className="secondary-button"
+              onClick={() => setMessagesOpen(true)}
+              type="button"
+            >
+              Nachrichten
+            </button>
+            <button
+              className="ghost-button"
+              onClick={() => setAccountOpen(true)}
+              type="button"
+            >
+              Konto
+            </button>
+          </div>
         </header>
 
         {activeShare ? (
@@ -580,34 +383,21 @@ export function Community({
                     : 'Auswahl'}
                 </p>
                 <span>
-                  {activeShare.mine
-                    ? `Geteilt mit ${recipientLabel(activeShare)}`
-                    : `Von ${activeShare.owner?.username}`}
+                  {`Geteilt mit ${recipientLabel(activeShare)}`}
                   {shareTotal !== null ? ` · ${shareTotal} Datei(en)` : ''}
                 </span>
                 {activeShare.note && <span>{activeShare.note}</span>}
               </div>
-              {activeShare.mine ? (
-                <button
-                  className="ghost-button share-delete"
-                  disabled={deletingId === activeShare.id}
-                  onClick={() => handleDeleteShare(activeShare)}
-                  type="button"
-                >
-                  {deletingId === activeShare.id
-                    ? 'Wird beendet…'
-                    : 'Freigabe beenden'}
-                </button>
-              ) : (
-                <button
-                  className="ghost-button share-delete"
-                  disabled={leavingId === activeShare.id}
-                  onClick={() => handleLeaveShare(activeShare)}
-                  type="button"
-                >
-                  {leavingId === activeShare.id ? 'Wird verlassen…' : 'Verlassen'}
-                </button>
-              )}
+              <button
+                className="ghost-button share-delete"
+                disabled={deletingId === activeShare.id}
+                onClick={() => handleDeleteShare(activeShare)}
+                type="button"
+              >
+                {deletingId === activeShare.id
+                  ? 'Wird beendet…'
+                  : 'Freigabe beenden'}
+              </button>
             </section>
 
             <MediaPager
@@ -625,203 +415,50 @@ export function Community({
             />
           </>
         ) : (
-          <>
-            <div className="community-tabs" role="tablist" aria-label="Community">
-              <button
-                aria-selected={tab === 'inbox'}
-                className={`community-tab${tab === 'inbox' ? ' is-active' : ''}`}
-                onClick={() => setTab('inbox')}
-                role="tab"
-                type="button"
-              >
-                Empfangen
-              </button>
-              <button
-                aria-selected={tab === 'share'}
-                className={`community-tab${tab === 'share' ? ' is-active' : ''}`}
-                onClick={() => setTab('share')}
-                role="tab"
-                type="button"
-              >
-                Teilen
-              </button>
+          <section className="media-section" aria-label="Deine Freigaben">
+            <div className="media-heading-row">
+              <h2 className="media-heading">Deine Freigaben</h2>
+              <p className="media-subheading">
+                Verweise auf deine Originale, keine zweiten Kopien.
+              </p>
             </div>
-
-            {tab === 'share' && (
-              <>
-                <section className="media-section" aria-label="Deine Freigaben">
-                  <div className="media-heading-row">
-                    <h2 className="media-heading">Deine Freigaben</h2>
-                    <p className="media-subheading">
-                      Verweise auf deine Originale, keine zweiten Kopien.
-                    </p>
-                  </div>
-                  {feedError && <p className="form-error">{feedError}</p>}
-                  {isFeedLoading ? (
-                    <div className="empty-panel">
-                      <p>Lädt…</p>
-                      <span>Deine Freigaben werden geladen.</span>
-                    </div>
-                  ) : outgoing.length === 0 ? (
-                    <div className="empty-panel">
-                      <p>Noch keine Freigaben.</p>
-                      <span>
-                        Markiere Dateien oder einen Ordner und teile sie mit
-                        Personen oder im Feed.
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="share-grid">
-                      {outgoing.map((share) => (
-                        <ShareCard
-                          isDeleting={deletingId === share.id}
-                          key={share.id}
-                          onDelete={() => handleDeleteShare(share)}
-                          onOpen={() => openShare(share)}
-                          share={share}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </section>
-
-                <FolderPicker
-                  allowCreate={false}
-                  folder={selectedFolder}
-                  onFolderChange={handleFolderChange}
-                  username={username}
-                />
-
-                <section className="community-actions" aria-label="Teilen">
-                  <p className="folder-hint">
-                    Dateien werden nur freigegeben, nicht kopiert. Markiere
-                    Fotos oder Videos — die Aktionen erscheinen unten.
-                  </p>
-                  <div className="media-toolbar-row">
-                    <button
-                      className="secondary-button"
-                      disabled={!selectedFolder}
-                      onClick={() =>
-                        setShareTarget({
-                          kind: 'folder',
-                          folder: selectedFolder,
-                        })
-                      }
-                      type="button"
-                    >
-                      Ganzen Ordner teilen
-                    </button>
-                    <button
-                      className="ghost-button"
-                      onClick={() =>
-                        setShareTarget({
-                          kind: 'folders',
-                          folder: selectedFolder,
-                        })
-                      }
-                      type="button"
-                    >
-                      Mehrere Ordner teilen
-                    </button>
-                  </div>
-                  {notice && <p className="form-success">{notice}</p>}
-                </section>
-
-                {selectedFolder ? (
-                  <MediaPager
-                    canLoadMore={ownHasLoaded && ownHasMore}
-                    emptyHint="Lade Dateien über Upload hoch, dann kannst du sie hier teilen."
-                    emptyTitle="Dieser Ordner ist noch leer."
-                    error={ownError}
-                    hasLoaded={ownHasLoaded}
-                    isLoading={ownLoading}
-                    items={ownItems}
-                    loadPage={loadOwnPage}
-                    onOpen={setViewerIndex}
-                    onToggleSelect={toggleItem}
-                    selectable
-                    selectedKeys={selectedKeys}
-                    sentinelRef={ownSentinelRef}
-                    total={ownTotal}
+            {feedError && <p className="form-error">{feedError}</p>}
+            {isFeedLoading ? (
+              <div className="empty-panel">
+                <p>Lädt…</p>
+                <span>Deine Freigaben werden geladen.</span>
+              </div>
+            ) : outgoing.length === 0 ? (
+              <div className="empty-panel">
+                <p>Noch keine Freigaben.</p>
+                <span>
+                  Teile Dateien oder Ordner unter Inhalte. Sie erscheinen
+                  danach hier.
+                </span>
+              </div>
+            ) : (
+              <div className="share-grid">
+                {outgoing.map((share) => (
+                  <ShareCard
+                    isDeleting={deletingId === share.id}
+                    key={share.id}
+                    onDelete={() => handleDeleteShare(share)}
+                    onOpen={() => openShare(share)}
+                    share={share}
                   />
-                ) : (
-                  <section className="media-section">
-                    <div className="empty-panel">
-                      <p>Ordner wählen.</p>
-                      <span>
-                        Danach markierst du einzelne Fotos und Videos oder teilst
-                        den ganzen Ordner.
-                      </span>
-                    </div>
-                  </section>
-                )}
-              </>
+                ))}
+              </div>
             )}
-
-            {tab === 'inbox' && (
-              <section className="media-section" aria-label="Empfangen">
-                {feedError && <p className="form-error">{feedError}</p>}
-                {isFeedLoading ? (
-                  <div className="empty-panel">
-                    <p>Lädt…</p>
-                    <span>Freigaben werden geladen.</span>
-                  </div>
-                ) : incoming.length === 0 ? (
-                  <div className="empty-panel">
-                    <p>Noch nichts geteilt bekommen.</p>
-                    <span>
-                      Sobald dir jemand Ordner oder Dateien nur mit dir teilt,
-                      erscheinen sie hier. Beiträge für alle liegen im Feed auf
-                      der Startseite.
-                    </span>
-                  </div>
-                ) : (
-                  <div className="share-grid">
-                    {incoming.map((share) => (
-                      <ShareCard
-                        isLeaving={leavingId === share.id}
-                        key={share.id}
-                        onLeave={() => handleLeaveShare(share)}
-                        onOpen={() => openShare(share)}
-                        share={share}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
-          </>
+          </section>
         )}
       </main>
 
-      <SelectionPopup
-        count={tab === 'share' && !activeShare ? selectedItems.length : 0}
-        onClear={clearSelection}
-        onSelectAll={ownItems.length > 0 ? selectAllVisible : undefined}
-        onShare={() =>
-          setShareTarget({
-            kind: 'items',
-            items: selectedItems,
-          })
-        }
-      />
-
-      {viewerIndex !== null && viewerItems[viewerIndex] && (
+      {viewerIndex !== null && shareItems[viewerIndex] && (
         <MediaViewer
           index={viewerIndex}
-          items={viewerItems}
+          items={shareItems}
           onClose={closeViewer}
           onIndexChange={setViewerIndex}
-        />
-      )}
-
-      {shareTarget && (
-        <ShareDialog
-          folder={shareTarget.folder}
-          items={shareTarget.items}
-          kind={shareTarget.kind}
-          onClose={closeShareDialog}
-          onShared={handleShared}
         />
       )}
 
@@ -842,20 +479,10 @@ export function Community({
         />
       )}
 
-      {dialog?.type === 'leave-share' && (
-        <ConfirmDialog
-          busy={leavingId === dialog.share.id}
-          confirmLabel="Freigabe verlassen"
-          danger
-          description={`Du siehst „${
-            dialog.share.kind === 'folder'
-              ? dialog.share.folder
-              : `${dialog.share.item_count} Datei(en)`
-          }“ danach nicht mehr. Die Dateien bleiben beim Absender.`}
-          error={feedError}
-          onCancel={closeDialog}
-          onConfirm={() => executeLeaveShare(dialog.share)}
-          title="Freigabe verlassen"
+      {messagesOpen && (
+        <MessagesDialog
+          isAdmin={isAdmin}
+          onClose={() => setMessagesOpen(false)}
         />
       )}
 

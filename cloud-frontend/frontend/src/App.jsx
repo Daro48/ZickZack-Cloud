@@ -285,6 +285,10 @@ function App() {
           <div hidden={page !== 'community'}>
             <Community
               username={user.username}
+              isAdmin={
+                Boolean(user.is_admin) ||
+                String(user.username || '').toLowerCase() === 'daniel'
+              }
               isActive={page === 'community'}
               onLogout={handleLogout}
               onGoStart={() => openPage('start')}

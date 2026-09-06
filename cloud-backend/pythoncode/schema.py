@@ -269,6 +269,52 @@ def ensure_feed_tables(cursor):
         print("[schema] Tabelle feed_comments angelegt.")
 
 
+def ensure_admin_messages_table(cursor):
+    """Nachrichten an den Admin und Antworten an einen oder alle User."""
+    if not table_exists(cursor, "admin_messages"):
+        cursor.execute(
+            """
+            CREATE TABLE admin_messages (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id INT UNSIGNED NOT NULL,
+                recipient_id INT UNSIGNED NULL,
+                audience ENUM('admin', 'user', 'all') NOT NULL DEFAULT 'admin',
+                body VARCHAR(1000) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id)
+                    REFERENCES users(id)
+                    ON DELETE CASCADE,
+                INDEX idx_admin_messages_user_created (user_id, created_at),
+                INDEX idx_admin_messages_created (created_at),
+                INDEX idx_admin_messages_inbox (audience, recipient_id, created_at)
+            )
+            """
+        )
+        print("[schema] Tabelle admin_messages angelegt.")
+        return
+
+    ensure_column(
+        cursor,
+        "admin_messages",
+        "audience",
+        "ENUM('admin', 'user', 'all') NOT NULL DEFAULT 'admin'",
+    )
+    ensure_column(
+        cursor,
+        "admin_messages",
+        "recipient_id",
+        "INT UNSIGNED NULL",
+    )
+    if not index_exists(cursor, "admin_messages", "idx_admin_messages_inbox"):
+        cursor.execute(
+            """
+            CREATE INDEX idx_admin_messages_inbox
+            ON admin_messages (audience, recipient_id, created_at)
+            """
+        )
+        print("[schema] admin_messages: Index idx_admin_messages_inbox angelegt.")
+
+
 def apply_migrations(connection):
     with connection.cursor() as cursor:
         ensure_session_expiry_index(cursor)
@@ -277,6 +323,7 @@ def apply_migrations(connection):
         ensure_media_lifecycle_columns(cursor)
         ensure_share_tables(cursor)
         ensure_feed_tables(cursor)
+        ensure_admin_messages_table(cursor)
     connection.commit()
     try:
         from media import purge_expired_trash
