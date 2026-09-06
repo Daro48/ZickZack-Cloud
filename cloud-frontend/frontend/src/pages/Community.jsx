@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppNav } from '../components/AppNav.jsx'
 import { ChangePasswordDialog } from '../components/ChangePasswordDialog.jsx'
 import { MessagesDialog } from '../components/MessagesDialog.jsx'
+import { UsersDialog } from '../components/UsersDialog.jsx'
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx'
 import { MediaCard } from '../components/MediaCard.jsx'
 import { MediaViewer } from '../components/MediaViewer.jsx'
@@ -162,6 +163,7 @@ export function Community({
   const [dialog, setDialog] = useState(null)
   const [accountOpen, setAccountOpen] = useState(false)
   const [messagesOpen, setMessagesOpen] = useState(false)
+  const [usersOpen, setUsersOpen] = useState(false)
 
   const [activeShare, setActiveShare] = useState(null)
   const [shareItems, setShareItems] = useState([])
@@ -363,6 +365,15 @@ export function Community({
             >
               Konto
             </button>
+            {isAdmin && (
+              <button
+                className="ghost-button"
+                onClick={() => setUsersOpen(true)}
+                type="button"
+              >
+                User
+              </button>
+            )}
           </div>
         </header>
 
@@ -418,9 +429,7 @@ export function Community({
           <section className="media-section" aria-label="Deine Freigaben">
             <div className="media-heading-row">
               <h2 className="media-heading">Deine Freigaben</h2>
-              <p className="media-subheading">
-                Verweise auf deine Originale, keine zweiten Kopien.
-              </p>
+              <p className="media-subheading">Keine Kopien.</p>
             </div>
             {feedError && <p className="form-error">{feedError}</p>}
             {isFeedLoading ? (
@@ -431,10 +440,7 @@ export function Community({
             ) : outgoing.length === 0 ? (
               <div className="empty-panel">
                 <p>Noch keine Freigaben.</p>
-                <span>
-                  Teile Dateien oder Ordner unter Inhalte. Sie erscheinen
-                  danach hier.
-                </span>
+                <span>Teile unter Inhalte.</span>
               </div>
             ) : (
               <div className="share-grid">
@@ -489,6 +495,8 @@ export function Community({
       {accountOpen && (
         <ChangePasswordDialog onClose={() => setAccountOpen(false)} />
       )}
+
+      {usersOpen && <UsersDialog onClose={() => setUsersOpen(false)} />}
     </div>
   )
 }

@@ -12,6 +12,7 @@ from media import (
     serialize_and_prime,
     serialize_item,
 )
+from login import touch_last_seen
 from upload import list_user_folders, require_user, sanitize_folder_name
 
 community_bp = Blueprint("community", __name__)
@@ -1403,6 +1404,9 @@ def list_notifications():
         user = require_user(connection)
         if not user:
             return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        touch_last_seen(connection, user["id"])
+        connection.commit()
 
         with connection.cursor() as cursor:
             cursor.execute(

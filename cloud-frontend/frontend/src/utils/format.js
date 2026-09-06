@@ -15,6 +15,50 @@ export function formatDayHeading(value) {
   })
 }
 
+const ONLINE_MS = 2 * 60 * 1000
+const presenceRelative = new Intl.RelativeTimeFormat('de-DE', { numeric: 'always' })
+
+function parseUtcDate(value) {
+  if (!value) {
+    return null
+  }
+  const raw = String(value).trim().replace(' ', 'T')
+  const date = new Date(raw.endsWith('Z') ? raw : `${raw}Z`)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+  return date
+}
+
+export function formatPresence(value) {
+  const date = parseUtcDate(value)
+  if (!date) {
+    return 'Noch nie gesehen'
+  }
+
+  const diffMs = date.getTime() - Date.now()
+  const agoMs = Date.now() - date.getTime()
+  if (agoMs < ONLINE_MS) {
+    return 'Online'
+  }
+
+  const absSeconds = Math.round(Math.abs(diffMs) / 1000)
+  if (absSeconds < 3600) {
+    return presenceRelative.format(Math.round(diffMs / 60000), 'minute')
+  }
+  if (absSeconds < 86400) {
+    return presenceRelative.format(Math.round(diffMs / 3600000), 'hour')
+  }
+  if (absSeconds < 86400 * 14) {
+    return presenceRelative.format(Math.round(diffMs / 86400000), 'day')
+  }
+  return date.toLocaleDateString('de-DE', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
 export function formatDateTime(value) {
   if (!value) {
     return ''

@@ -10,6 +10,7 @@ from media import media_bp
 from community import community_bp
 from upload import upload_bp
 from feedback import feedback_bp
+from admin import admin_bp
 from schema import run_startup_migrations
 
 GZIP_MIN_BYTES = int(os.getenv("GZIP_MIN_BYTES", "1024"))
@@ -27,6 +28,7 @@ app.register_blueprint(upload_bp)
 app.register_blueprint(media_bp)
 app.register_blueprint(community_bp)
 app.register_blueprint(feedback_bp)
+app.register_blueprint(admin_bp)
 
 run_startup_migrations()
 

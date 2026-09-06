@@ -146,9 +146,7 @@ export function MessagesDialog({ isAdmin = false, onClose }) {
       confirmDisabled={confirmDisabled}
       confirmLabel={isAdmin ? 'Antwort senden' : 'Nachricht senden'}
       description={
-        isAdmin
-          ? 'Antworte einem User oder allen. Nachrichten an dich siehst nur du.'
-          : 'Schreib Daniel, was verbessert werden soll. Antworten erscheinen hier.'
+        isAdmin ? 'Einem User oder allen antworten.' : 'Nachricht an Daniel.'
       }
       error={
         sendError ||

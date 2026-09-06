@@ -3172,3 +3172,32 @@ a.nav-link.is-active {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+.user-presence {
+  align-items: baseline;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: space-between;
+  padding-bottom: 12px;
+}
+
+.user-presence:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.user-presence strong {
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
+.user-presence-status {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.user-presence-status.is-online {
+  color: var(--acid-mint);
+}

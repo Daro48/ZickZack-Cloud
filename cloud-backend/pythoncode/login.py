@@ -12,6 +12,7 @@ login_bp = Blueprint("login", __name__)
 SESSION_COOKIE_NAME = "session_token"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "daniel").strip().lower()
+LAST_SEEN_MIN_INTERVAL_SECONDS = 60
 MAX_LOGIN_ATTEMPTS = 20
 LOCKOUT_MINUTES = 15
 
@@ -38,6 +39,25 @@ def attach_admin_flag(user):
     attached = dict(user)
     attached["is_admin"] = is_admin_username(attached.get("username"))
     return attached
+
+
+def touch_last_seen(connection, user_id):
+    """Nur gedrosselt schreiben, nie auf dem Upload-Pfad aufrufen."""
+    if not user_id:
+        return
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE users
+            SET last_seen_at = UTC_TIMESTAMP()
+            WHERE id = %s
+              AND (
+                last_seen_at IS NULL
+                OR last_seen_at < UTC_TIMESTAMP() - INTERVAL %s SECOND
+              )
+            """,
+            (user_id, LAST_SEEN_MIN_INTERVAL_SECONDS),
+        )
 
 
 def get_client_ip():
@@ -296,6 +316,8 @@ def me():
     try:
         delete_expired_sessions_throttled(connection)
         user = resolve_session_user(connection, session_token)
+        if user:
+            touch_last_seen(connection, user["id"])
         connection.commit()
 
         if not user:

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from flask import Blueprint, Response, jsonify, request, send_file
 from database import get_database_connection
+from login import touch_last_seen
 from upload import (
     MEDIA_ROOT,
     create_media_thumbnail,
@@ -811,6 +812,9 @@ def get_storage():
         user = require_user(connection)
         if not user:
             return jsonify({"status": "error", "message": "Not authenticated"}), 401
+
+        touch_last_seen(connection, user["id"])
+        connection.commit()
 
         with connection.cursor() as cursor:
             used = used_storage_bytes(cursor, user["id"])

@@ -324,6 +324,7 @@ def apply_migrations(connection):
         ensure_share_tables(cursor)
         ensure_feed_tables(cursor)
         ensure_admin_messages_table(cursor)
+        ensure_column(cursor, "users", "last_seen_at", "DATETIME NULL")
     connection.commit()
     try:
         from media import purge_expired_trash
