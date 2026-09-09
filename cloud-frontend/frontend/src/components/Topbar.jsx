@@ -26,7 +26,7 @@ export function Topbar({
   const logo = (
     <>
       Cloud
-      <span className="topbar-version">Version 3.1.1</span>
+      <span className="topbar-version">Version 3.1.2</span>
     </>
   )
 
